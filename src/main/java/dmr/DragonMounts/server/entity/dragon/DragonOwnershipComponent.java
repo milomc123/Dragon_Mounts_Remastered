@@ -121,6 +121,11 @@ abstract class DragonOwnershipComponent extends DragonMovementComponent {
         entityData.set(orderedToSitDataAccessor, pOrderedToSit);
         getNavigation().stop();
         setTarget(null);
+        if (pOrderedToSit) {
+            getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+            getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.ATTACK_TARGET);
+            stopBreathAttack();
+        }
         setInSittingPose(pOrderedToSit);
     }
 

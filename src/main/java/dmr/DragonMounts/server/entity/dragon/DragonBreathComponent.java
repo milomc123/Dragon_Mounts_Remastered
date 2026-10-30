@@ -135,6 +135,7 @@ abstract class DragonBreathComponent extends DragonAnimationComponent {
     public void tick() {
         super.tick();
 
+        if (level().isClientSide) return;
         if (hasBreathAttack()) {
             if (hasBreathTarget()) {
                 if (breathTime == -1) {
@@ -151,7 +152,10 @@ abstract class DragonBreathComponent extends DragonAnimationComponent {
                     if (getBreathTarget() instanceof EntityTracker entityTracker) {
                         Entity targetEntity = entityTracker.getEntity();
 
-                        if (!targetEntity.isAlive()) {
+                        if (!targetEntity.isAlive()
+                                || targetEntity.level() != level()
+                                || distanceToSqr(targetEntity) > breathRange * breathRange
+                                || !hasLineOfSight(targetEntity)) {
                             stopBreathAttack();
                             return;
                         }
@@ -179,7 +183,15 @@ abstract class DragonBreathComponent extends DragonAnimationComponent {
                             .getEntities(
                                     this,
                                     breathBoundingBox,
-                                    ent -> ent instanceof LivingEntity living && canHarmWithBreath(living))
+                                    ent -> ent instanceof LivingEntity living
+                                            && canHarmWithBreath(living)
+                                            && distanceToSqr(living) <= breathRange * breathRange
+                                            && hasLineOfSight(living)
+                                            && living.position()
+                                                            .subtract(dragonPos)
+                                                            .normalize()
+                                                            .dot(direction)
+                                                    >= 0.5)
                             .stream()
                             .map(s -> (LivingEntity) s)
                             .toList();
@@ -221,7 +233,7 @@ abstract class DragonBreathComponent extends DragonAnimationComponent {
      * Applies damage to the target from the breath attack.
      */
     public void attackWithBreath(LivingEntity target) {
-        if (!canHarmWithBreath(target)) return;
+        if (level().isClientSide || !canHarmWithBreath(target)) return;
         if (getControllingPassenger() != null && getControllingPassenger() == target) return;
 
         var breathType = getDragon().getBreed().getBreathType();

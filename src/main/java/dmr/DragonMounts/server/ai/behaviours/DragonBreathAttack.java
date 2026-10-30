@@ -20,9 +20,6 @@ public class DragonBreathAttack extends Behavior<TameableDragonEntity> {
     /** Cooldown period after breath attack in ticks */
     private static final int COOLDOWN_DURATION = 200;
 
-    /** Current status of this behavior */
-    private Behavior.Status status = Behavior.Status.STOPPED;
-
     public DragonBreathAttack() {
         super(
                 ImmutableMap.of(
@@ -34,8 +31,8 @@ public class DragonBreathAttack extends Behavior<TameableDragonEntity> {
     }
 
     @Override
-    public Behavior.Status getStatus() {
-        return this.status;
+    protected boolean checkExtraStartConditions(ServerLevel level, TameableDragonEntity entity) {
+        return entity.hasBreathAttack() && !entity.hasControllingPassenger() && !entity.isOrderedToSit();
     }
 
     @Override
@@ -44,7 +41,6 @@ public class DragonBreathAttack extends Behavior<TameableDragonEntity> {
 
         entity.setBreathAttackTarget(target.get());
         entity.getBrain().setMemoryWithExpiry(ModMemoryModuleTypes.HAS_BREATH_COOLDOWN.get(), true, COOLDOWN_DURATION);
-        status = Behavior.Status.RUNNING;
     }
 
     @Override
@@ -54,6 +50,6 @@ public class DragonBreathAttack extends Behavior<TameableDragonEntity> {
 
     @Override
     protected void stop(ServerLevel level, TameableDragonEntity entity, long gameTime) {
-        status = Status.STOPPED;
+        entity.stopBreathAttack();
     }
 }
