@@ -11,11 +11,13 @@ import dmr.DragonMounts.registry.ModCapabilities;
 import dmr.DragonMounts.registry.ModEntities;
 import dmr.DragonMounts.registry.ModItems;
 import dmr.DragonMounts.server.entity.TameableDragonEntity;
+import dmr.DragonMounts.server.inventory.DragonInventoryHandler;
 import dmr.DragonMounts.server.items.DragonWhistleItem;
 import dmr.DragonMounts.server.worlddata.DragonWorldDataManager;
 import dmr.DragonMounts.util.PlayerStateUtils;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundSource;
@@ -27,6 +29,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
@@ -38,6 +41,72 @@ import net.neoforged.testframework.gametest.ExtendedGameTestHelper;
 @PrefixGameTestTemplate(false)
 @ForEachTest(groups = "Dragon Whistles")
 public class DragonWhistleTests {
+
+    @EmptyTemplate(floor = true)
+    @GameTest
+    @TestHolder
+    public static void cancelledSummonRestoresBindingAndInventory(ExtendedGameTestHelper helper) {
+        var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
+        var dragon = helper.spawn(ModEntities.DRAGON_ENTITY.get(), DMRTestConstants.TEST_POS);
+        dragon.setBreed(DragonBreedsRegistry.getDefault());
+        DragonWhistleHandler.setDragon(player, dragon, 0);
+        player.setItemInHand(InteractionHand.MAIN_HAND, DragonWhistleItem.getWhistleItem(DyeColor.WHITE));
+        var nether = helper.getLevel().getServer().getLevel(Level.NETHER);
+        var moved = (TameableDragonEntity) dragon.changeDimension(new DimensionTransition(
+                nether, new Vec3(100, 100, 100), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING));
+        var id = moved.getDragonUUID();
+        var sourceInventory = moved.getDragonInventory();
+        sourceInventory.inventory.setItem(3, new ItemStack(Blocks.DIAMOND_BLOCK, 5));
+        moved.discard();
+        var sourceData = DragonWorldDataManager.getInstance(nether);
+        var destinationData = DragonWorldDataManager.getInstance(helper.getLevel());
+        var oldDestinationInventory = DragonInventoryHandler.getOrCreateInventory(helper.getLevel(), id);
+        oldDestinationInventory.inventory.setItem(3, new ItemStack(Blocks.GOLD_BLOCK, 2));
+        var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
+        var previous = cap.serializeNBT(helper.getLevel().registryAccess());
+        var savedSnapshot = cap.dragonNBTs.get(0);
+        var invalid = savedSnapshot.copy();
+        invalid.putString("id", "minecraft:item");
+        cap.dragonNBTs.put(0, invalid);
+        if (DragonWhistleHandler.callDragon(player)) helper.fail("Invalid snapshot was summoned");
+        cap.dragonNBTs.put(0, savedSnapshot);
+        if (sourceData.dragonInventories.get(id) != sourceInventory
+                || destinationData.dragonInventories.get(id) != oldDestinationInventory) {
+            helper.fail("Failed reconstruction moved or overwrote inventory");
+        }
+        boolean[] observed = {false};
+        Consumer<EntityJoinLevelEvent> reject = event -> {
+            if (event.getEntity() instanceof TameableDragonEntity candidate && id.equals(candidate.getDragonUUID())) {
+                observed[0] = true;
+                event.setCanceled(true);
+            }
+        };
+        NeoForge.EVENT_BUS.addListener(reject);
+        try {
+            if (DragonWhistleHandler.callDragon(player)) helper.fail("Cancelled spawn reported success");
+            if (!observed[0]) helper.fail("Test did not reach the spawn event");
+            if (!previous.equals(cap.serializeNBT(helper.getLevel().registryAccess()))) {
+                helper.fail("Cancelled spawn changed binding, NBT, or summon ID");
+            }
+            if (sourceData.dragonInventories.get(id) != sourceInventory
+                    || sourceInventory.inventory.getItem(3).getCount() != 5
+                    || destinationData.dragonInventories.get(id) != oldDestinationInventory
+                    || oldDestinationInventory.inventory.getItem(3).getCount() != 2) {
+                helper.fail("Cancelled spawn did not restore both dimensions' inventories");
+            }
+            if (cap.lastCall != null) helper.fail("Cancelled summon consumed the cooldown");
+        } finally {
+            NeoForge.EVENT_BUS.unregister(reject);
+        }
+        if (!DragonWhistleHandler.callDragon(player)) helper.fail("Could not retry after cancelled summon");
+        var replacement = DragonWhistleHandler.findDragon(player, 0);
+        if (replacement == null
+                || replacement.getDragonInventory() != sourceInventory
+                || sourceData.dragonInventories.containsKey(id)) {
+            helper.fail("Successful retry did not commit inventory transfer");
+        }
+        helper.succeed();
+    }
 
     @EmptyTemplate
     @GameTest

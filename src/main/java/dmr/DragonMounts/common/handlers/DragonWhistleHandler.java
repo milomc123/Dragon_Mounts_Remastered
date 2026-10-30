@@ -333,41 +333,61 @@ public class DragonWhistleHandler {
                 return true;
             }
 
-            // Only reconstruct from the saved snapshot when no authoritative entity is loaded.
-            if (instance != null) {
-                var dimension = ResourceLocation.tryParse(instance.getDimension());
-                if (dimension != null) {
-                    var source = player.getServer().getLevel(ResourceKey.create(Registries.DIMENSION, dimension));
-                    if (source != null) {
-                        DragonWorldDataManager.transferDragonInventory(source, player.level(), instance.getUUID());
-                    }
-                }
-            }
-
-            // Spawning a new dragon
-            TameableDragonEntity newDragon = cap.createDragonEntity(player, player.level, summonItemIndex);
-
-            if (newDragon == null) {
-                return false;
-            }
-
-            DMR.LOGGER.debug(
-                    "Spawning new dragon: {} for player: {}",
-                    newDragon.getDragonUUID(),
-                    player.getName().getString());
-
-            newDragon.setPos(player.getX(), player.getY(), player.getZ());
-            if (!player.level.addFreshEntity(newDragon)) return false;
-            ModCapabilities.syncCapability(player);
-
-            PacketDistributor.sendToPlayersTrackingEntity(
-                    newDragon,
-                    new DragonStatePacket(newDragon.getId(), ModConstants.DragonConstants.DRAGON_STATE_FOLLOW));
-
-            return true;
+            return summonFromSnapshot(player, cap, summonItemIndex);
         }
-
         return false;
+    }
+
+    private static boolean summonFromSnapshot(Player player, DragonOwnerCapability cap, int index) {
+        var instance = cap.dragonInstances.get(index);
+        var previousNBT = cap.dragonNBTs.get(index);
+        var previousSummon = cap.lastSummons.get(index);
+        if (instance == null || previousNBT == null) return false;
+        var id = instance.getUUID();
+        var destination = DragonWorldDataManager.getInstance(player.level());
+        var previousDestinationInventory = destination.dragonInventories.get(id);
+        var dimension = ResourceLocation.tryParse(instance.getDimension());
+        var sourceLevel = dimension == null
+                ? null
+                : player.getServer().getLevel(ResourceKey.create(Registries.DIMENSION, dimension));
+        var source = sourceLevel == null ? null : DragonWorldDataManager.getInstance(sourceLevel);
+        var previousSourceInventory = source == null ? null : source.dragonInventories.get(id);
+        TameableDragonEntity newDragon = null;
+        boolean committed = false;
+        try {
+            if (sourceLevel != null) {
+                DragonWorldDataManager.transferDragonInventory(sourceLevel, player.level(), id);
+            }
+            newDragon = cap.createDragonEntity(player, player.level(), index);
+            if (newDragon == null) return false;
+            newDragon.setPos(player.getX(), player.getY(), player.getZ());
+            // The join event needs the tentative ID to distinguish this summon from an obsolete entity.
+            cap.lastSummons.put(index, newDragon.getUUID());
+            if (!player.level().addFreshEntity(newDragon)) return false;
+            cap.setDragonToWhistle(newDragon, index);
+            committed = true;
+        } finally {
+            if (!committed) {
+                if (newDragon != null) newDragon.discard();
+                cap.dragonInstances.put(index, instance);
+                cap.dragonNBTs.put(index, previousNBT);
+                if (previousSummon == null) cap.lastSummons.remove(index);
+                else cap.lastSummons.put(index, previousSummon);
+                if (previousDestinationInventory == null) destination.dragonInventories.remove(id);
+                else destination.dragonInventories.put(id, previousDestinationInventory);
+                destination.setDirty();
+                if (source != null && source != destination) {
+                    if (previousSourceInventory == null) source.dragonInventories.remove(id);
+                    else source.dragonInventories.put(id, previousSourceInventory);
+                    source.setDirty();
+                }
+                ModCapabilities.syncCapability(player);
+            }
+        }
+        ModCapabilities.syncCapability(player);
+        PacketDistributor.sendToPlayersTrackingEntity(
+                newDragon, new DragonStatePacket(newDragon.getId(), ModConstants.DragonConstants.DRAGON_STATE_FOLLOW));
+        return true;
     }
 
     public static TameableDragonEntity findDragon(Player player, int index) {

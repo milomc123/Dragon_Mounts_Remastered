@@ -42,42 +42,30 @@ public class DragonOwnerCapability implements INBTSerializable<CompoundTag> {
     public boolean cameraFlight = true;
     public boolean alternateDismount = true;
 
+    /** Creates a sanitized snapshot entity; the caller commits its binding only after spawning succeeds. */
     public TameableDragonEntity createDragonEntity(Player player, Level world, int index) {
         setPlayerInstance(player);
 
         var instance = getDragonInstance(index);
         var nbt = dragonNBTs.get(index);
+        if (instance == null || nbt == null) return null;
         var uuid = instance.getUUID();
 
-        if (nbt != null) {
-            Optional<EntityType<?>> type = EntityType.by(nbt);
-
-            if (type.isPresent()) {
-                Entity entity = type.get().create(world);
-                if (entity instanceof TameableDragonEntity dragon) {
-                    dragon.load(nbt);
-                    dragon.setUUID(UUID.randomUUID());
-                    dragon.setDragonUUID(uuid);
-
-                    dragon.stopSitting();
-                    dragon.setWanderTarget(Optional.empty());
-
-                    setDragonToWhistle(dragon, index);
-
-                    dragon.clearFire();
-                    dragon.hurtTime = 0;
-                    dragon.setHealth(Math.max(1, dragon.getHealth()));
-
-                    // Cure the dragon of any effects to prevent for example poison or wither
-                    dragon.removeEffectsCuredBy(EffectCures.PROTECTED_BY_TOTEM);
-
-                    lastSummons.put(index, dragon.getUUID());
-
-                    return dragon;
-                }
-            }
-        }
-        return null;
+        var type = EntityType.by(nbt);
+        if (type.isEmpty()) return null;
+        Entity entity = type.get().create(world);
+        if (!(entity instanceof TameableDragonEntity dragon)) return null;
+        dragon.load(nbt);
+        dragon.setUUID(UUID.randomUUID());
+        dragon.setDragonUUID(uuid);
+        dragon.stopSitting();
+        dragon.setWanderTarget(Optional.empty());
+        dragon.clearFire();
+        dragon.hurtTime = 0;
+        dragon.setHealth(Math.max(1, dragon.getHealth()));
+        // Cure the dragon of any effects to prevent for example poison or wither.
+        dragon.removeEffectsCuredBy(EffectCures.PROTECTED_BY_TOTEM);
+        return dragon;
     }
 
     public DragonInstance getDragonInstance(int index) {
