@@ -21,7 +21,7 @@ public class DragonWorldData extends SavedData {
 
     public Map<UUID, Integer> deathDelay = new HashMap<>();
     public Map<UUID, String> deathMessages = new HashMap<>();
-    public List<UUID> deadDragons = new ArrayList<>();
+    public Set<UUID> deadDragons = new HashSet<>();
 
     public Map<UUID, DragonInventory> dragonInventories = new HashMap<>();
 
@@ -57,13 +57,12 @@ public class DragonWorldData extends SavedData {
     public static DragonWorldData load(CompoundTag nbt, Provider provider) {
         DragonWorldData data = new DragonWorldData();
 
-        var num = nbt.getInt("num");
         ListTag listtag = nbt.getList("deadDragons", 10);
 
-        for (int i = 0; i < num; i++) {
+        for (int i = 0; i < listtag.size(); i++) {
             CompoundTag compoundtag = listtag.getCompound(i);
 
-            if (compoundtag == null || compoundtag.isEmpty()) {
+            if (!compoundtag.hasUUID("uuid")) {
                 continue;
             }
 
@@ -73,6 +72,14 @@ public class DragonWorldData extends SavedData {
             data.deadDragons.add(uuid);
             data.deathDelay.put(uuid, delay);
             data.deathMessages.put(uuid, message);
+        }
+
+        // Older saves accidentally wrote the final death into the root compound.
+        if (nbt.hasUUID("uuid")) {
+            UUID uuid = nbt.getUUID("uuid");
+            data.deadDragons.add(uuid);
+            data.deathDelay.putIfAbsent(uuid, nbt.getInt("delay"));
+            data.deathMessages.putIfAbsent(uuid, nbt.getString("message"));
         }
 
         var dragonHistory = nbt.getCompound("dragonHistory");
@@ -103,15 +110,15 @@ public class DragonWorldData extends SavedData {
     public CompoundTag save(CompoundTag pCompoundTag, Provider provider) {
         CompoundTag tag = new CompoundTag();
 
-        tag.putInt("num", deathDelay.size());
+        tag.putInt("num", deadDragons.size());
 
         ListTag listtag = new ListTag();
 
         for (UUID uuid : deadDragons) {
             CompoundTag compoundtag = new CompoundTag();
-            tag.putUUID("uuid", uuid);
-            tag.putInt("delay", deathDelay.getOrDefault(uuid, 0));
-            tag.putString("message", deathMessages.getOrDefault(uuid, ""));
+            compoundtag.putUUID("uuid", uuid);
+            compoundtag.putInt("delay", deathDelay.getOrDefault(uuid, 0));
+            compoundtag.putString("message", deathMessages.getOrDefault(uuid, ""));
             listtag.add(compoundtag);
         }
         tag.put("deadDragons", listtag);

@@ -12,7 +12,6 @@ import dmr.DragonMounts.registry.ModItems;
 import dmr.DragonMounts.server.entity.TameableDragonEntity;
 import dmr.DragonMounts.server.worlddata.DragonWorldDataManager;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -32,20 +31,19 @@ public class DragonWhistleEvent {
 
     @SubscribeEvent
     public static void onWorldTick(LevelTickEvent.Post event) {
-        if (!event.getLevel().isClientSide) {
-            var data = DragonWorldDataManager.getInstance(event.getLevel());
-
+        if (!event.getLevel().isClientSide
+                && event.getLevel() == event.getLevel().getServer().overworld()) {
+            var data = DragonWorldDataManager.getDeathData(event.getLevel());
+            boolean changed = false;
             for (var uuid : data.deadDragons) {
-                if (data.deathDelay.get(uuid) > 0) {
-                    data.deathDelay.put(uuid, data.deathDelay.get(uuid) - 1);
+                int delay = data.deathDelay.getOrDefault(uuid, 0);
+                if (delay > 0) {
+                    data.deathDelay.put(uuid, delay - 1);
+                    changed = true;
                 }
             }
-
-            for (var uuid : new CopyOnWriteArrayList<>(data.deadDragons)) {
-                if (data.deathDelay.get(uuid) <= 0) {
-                    DragonWorldDataManager.clearDragonData(event.getLevel(), uuid);
-                }
-            }
+            // Zero means ready to respawn; -1 means permanent death. Keep both until the owner returns.
+            if (changed) data.setDirty();
         }
     }
 
@@ -93,18 +91,21 @@ public class DragonWhistleEvent {
                         if (dragonWasKilled) {
                             var dragonRespawnDelay = DragonWorldDataManager.getDeathDelay(event.getLevel(), id);
                             var message = DragonWorldDataManager.getDeathMessage(event.getLevel(), id);
-                            var mes = Component.Serializer.fromJsonLenient(
-                                    message, event.getLevel().registryAccess());
+                            var mes = message.isEmpty()
+                                    ? null
+                                    : Component.Serializer.fromJsonLenient(
+                                            message, event.getLevel().registryAccess());
 
                             if (mes != null) {
                                 player.displayClientMessage(mes, false);
                             }
 
-                            if (ServerConfig.ALLOW_RESPAWN) {
+                            if (ServerConfig.ALLOW_RESPAWN && dragonRespawnDelay >= 0) {
                                 state.respawnDelays.put(index, dragonRespawnDelay);
                             } else {
                                 state.dragonNBTs.remove(index);
                                 state.respawnDelays.remove(index);
+                                state.lastSummons.remove(index);
                                 state.dragonInstances.remove(index);
 
                                 if (player instanceof ServerPlayer spPlayer) {
@@ -147,7 +148,7 @@ public class DragonWhistleEvent {
     @SubscribeEvent
     public static void onEntityDeath(LivingDeathEvent event) {
         if (!event.getEntity().level.isClientSide) {
-            if (event.getEntity() instanceof TameableDragonEntity dragon) {
+            if (event.getEntity() instanceof TameableDragonEntity dragon && dragon.getOwnerUUID() != null) {
                 var mes = ((MutableComponent) event.getSource().getLocalizedDeathMessage(event.getEntity()))
                         .withStyle(ChatFormatting.RED);
 
@@ -165,6 +166,7 @@ public class DragonWhistleEvent {
                     if (!ServerConfig.ALLOW_RESPAWN) {
                         var state = player.getData(ModCapabilities.PLAYER_CAPABILITY);
 
+                        state.lastSummons.remove(index);
                         state.dragonInstances.remove(index);
                         state.dragonNBTs.remove(index);
                         state.respawnDelays.remove(index);

@@ -25,8 +25,34 @@ public class DragonWorldDataManager {
         destinationData.setDirty();
     }
 
+    /** Server-wide death records live in the Overworld; inventories remain dimension-local. */
+    public static DragonWorldData getDeathData(Level level) {
+        var server = level.getServer();
+        if (server == null) throw new IllegalArgumentException("Death records require a server level");
+        var global = getInstance(server.overworld());
+        // Migrate valid records written by previous versions in other dimensions.
+        for (var otherLevel : server.getAllLevels()) {
+            if (otherLevel == server.overworld()) continue;
+            var legacy = getInstance(otherLevel);
+            if (legacy.deadDragons.isEmpty()) continue;
+            for (var id : legacy.deadDragons) {
+                int delay = legacy.deathDelay.getOrDefault(id, 0);
+                int existing = global.deathDelay.getOrDefault(id, 0);
+                global.deadDragons.add(id);
+                global.deathDelay.put(id, delay < 0 || existing < 0 ? -1 : Math.max(delay, existing));
+                global.deathMessages.putIfAbsent(id, legacy.deathMessages.getOrDefault(id, ""));
+            }
+            legacy.deadDragons.clear();
+            legacy.deathDelay.clear();
+            legacy.deathMessages.clear();
+            legacy.setDirty();
+            global.setDirty();
+        }
+        return global;
+    }
+
     public static void clearDragonData(Level level, UUID uuid) {
-        DragonWorldData data = DragonWorldData.getInstance(level);
+        DragonWorldData data = getDeathData(level);
         data.deadDragons.remove(uuid);
         data.deathDelay.remove(uuid);
         data.deathMessages.remove(uuid);
@@ -34,25 +60,26 @@ public class DragonWorldDataManager {
     }
 
     public static boolean isDragonDead(Level level, UUID uuid) {
-        DragonWorldData data = DragonWorldData.getInstance(level);
+        DragonWorldData data = getDeathData(level);
         return data.deadDragons.contains(uuid);
     }
 
     public static int getDeathDelay(Level level, UUID uuid) {
-        DragonWorldData data = DragonWorldData.getInstance(level);
-        return data.deathDelay.get(uuid);
+        DragonWorldData data = getDeathData(level);
+        return data.deathDelay.getOrDefault(uuid, 0);
     }
 
     public static String getDeathMessage(Level level, UUID uuid) {
-        DragonWorldData data = DragonWorldData.getInstance(level);
-        return data.deathMessages.get(uuid);
+        DragonWorldData data = getDeathData(level);
+        return data.deathMessages.getOrDefault(uuid, "");
     }
 
     public static void setDragonDead(TameableDragonEntity dragon, String message) {
+        if (dragon.getOwnerUUID() == null) return;
         var level = dragon.level;
-        DragonWorldData data = DragonWorldData.getInstance(level);
+        DragonWorldData data = getDeathData(level);
         data.deadDragons.add(dragon.getDragonUUID());
-        data.deathDelay.put(dragon.getDragonUUID(), ServerConfig.RESPAWN_TIME * 20);
+        data.deathDelay.put(dragon.getDragonUUID(), ServerConfig.ALLOW_RESPAWN ? ServerConfig.RESPAWN_TIME * 20 : -1);
         data.deathMessages.put(dragon.getDragonUUID(), message);
         data.setDirty();
     }
