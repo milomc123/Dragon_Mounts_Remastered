@@ -1,0 +1,34 @@
+// Isolated localhost multiplayer runs for manual whistle regression testing.
+neoForge.runs {
+    whistleSmokeServer {
+        server()
+        gameDirectory = file('runs/whistle-smoke/server')
+        logLevel = org.slf4j.event.Level.INFO
+        jvmArgument '-Xmx1G'
+        programArgument '--nogui'
+        taskBefore tasks.named('prepareWhistleSmoke')
+    }
+    whistleSmokeOwner {
+        client()
+        devLogin = false
+        gameDirectory = file('runs/whistle-smoke/owner')
+        logLevel = org.slf4j.event.Level.INFO
+        jvmArgument '-Xmx1536M'
+        programArguments.addAll '--username', 'WhistleOwner', '--quickPlayMultiplayer', '127.0.0.1:25575', '--width', '960', '--height', '600'
+        taskBefore tasks.named('prepareWhistleSmoke')
+    }
+    whistleSmokeObserver {
+        client()
+        devLogin = false
+        gameDirectory = file('runs/whistle-smoke/observer')
+        logLevel = org.slf4j.event.Level.INFO
+        jvmArgument '-Xmx1536M'
+        programArguments.addAll '--username', 'WhistleObserver', '--quickPlayMultiplayer', '127.0.0.1:25575', '--width', '960', '--height', '600'
+        taskBefore tasks.named('prepareWhistleSmoke')
+    }
+}
+
+// JavaExec otherwise closes stdin, which prevents server console commands.
+tasks.named('runWhistleSmokeServer', JavaExec) {
+    standardInput = System.in
+}
