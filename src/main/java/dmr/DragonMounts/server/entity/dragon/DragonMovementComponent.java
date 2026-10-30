@@ -86,6 +86,9 @@ abstract class DragonMovementComponent extends DragonInventoryComponent {
      */
     public boolean shouldFly() {
         if (!canFly()) return false;
+        if (getControllingPassenger() == null && !getNavigation().isDone()) {
+            return ((DragonPathNavigation) getNavigation()).isFlightPath();
+        }
         if (isFlying()) return !onGround(); // more natural landings
         return canFly() && !isInWater() && !isNearGround() && !jumping;
     }
@@ -115,35 +118,9 @@ abstract class DragonMovementComponent extends DragonInventoryComponent {
             setFlying(flying);
         }
 
-        if (isNoGravity() != shouldFly() && !isInWater()) {
-            setNoGravity(shouldFly());
+        if (isNoGravity() != flying && !isInWater()) {
+            setNoGravity(flying);
         }
-
-        if (getControllingPassenger() == null && !getDragon().hasWanderTarget() && !isOrderedToSit()) {
-            if (isPathFinding()) {
-                var dest = getNavigation().getTargetPos();
-                var farDist = dest.distManhattan(blockPosition()) >= 16d;
-                setSprinting(farDist);
-            } else {
-                if (isSprinting()) setSprinting(false);
-            }
-        }
-
-        if (isPathFinding()) {
-            if (getNavigation().getPath() != null) {
-                var type = getNavigation().getPath().getNextNode().type;
-                if (type == PathType.WALKABLE) {
-                    setFlying(false);
-                } else if (type == PathType.WATER || type == PathType.WATER_BORDER) {
-                    setFlying(false);
-                    setSwimming(true);
-                }
-            }
-        }
-    }
-
-    public void aiStep() {
-        super.aiStep();
 
         if (getControllingPassenger() == null && !getDragon().hasWanderTarget() && !isOrderedToSit()) {
             if (isPathFinding()) {
@@ -160,11 +137,11 @@ abstract class DragonMovementComponent extends DragonInventoryComponent {
     public boolean isAffectedByFluids() {
         return canDrownInFluidType(Fluids.WATER.getFluidType());
     }
-	
-	@Override
-	public float getWaterSlowDown() {
-		return 0.5f;
-	}
+
+    @Override
+    public float getWaterSlowDown() {
+        return 0.5f;
+    }
 
     /** Checks if the dragon can drown in a specific fluid type. */
     public boolean canDrownInFluidType(net.neoforged.neoforge.fluids.FluidType type) {

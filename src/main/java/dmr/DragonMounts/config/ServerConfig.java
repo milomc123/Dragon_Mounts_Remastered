@@ -7,6 +7,13 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class ServerConfig {
     public static final ModConfigSpec MOD_CONFIG_SPEC;
+    @Config(
+            key = "pathfinding_budget_ms",
+            category = "performance",
+            comment =
+                    "Shared dragon Brain pathfinding time budget per level per tick in milliseconds. A running search finishes; later requests keep their targets and wait until the next tick. Zero disables this budget.")
+    @RangeConstraint(min = 0, max = 50)
+    public static double PATHFINDING_BUDGET_MS = 4.0;
 
     @Config(key = "hatch_time", comment = "Time in seconds for a dragon egg to hatch.")
     @RangeConstraint(min = 0, max = Integer.MAX_VALUE)

@@ -1,8 +1,9 @@
 package dmr.DragonMounts.server.ai.navigation;
 
+import dmr.DragonMounts.server.ai.navigation.DragonNodeEvaluator.Mode;
 import dmr.DragonMounts.server.entity.TameableDragonEntity;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.navigation.FlyingPathNavigation;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.pathfinder.Path;
@@ -10,21 +11,17 @@ import net.minecraft.world.level.pathfinder.PathFinder;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.Tags.Fluids;
-
 import org.jetbrains.annotations.Nullable;
 
 public class DragonPathNavigation extends FlyingPathNavigation {
     protected final TameableDragonEntity dragon;
-
-    private int lastPathCreationDelta = 0;
-    private static final int TICKS_BETWEEN_PATH_CREATIONS = 5;
 
     public DragonPathNavigation(TameableDragonEntity dragon, Level level) {
         super(dragon, level);
 
         this.dragon = dragon;
 
-        setMaxVisitedNodesMultiplier(5f);
+        setMaxVisitedNodesMultiplier(1f);
     }
 
     private DragonNodeEvaluator dragonNodeEvaluator;
@@ -38,93 +35,113 @@ public class DragonPathNavigation extends FlyingPathNavigation {
 
     @Override
     public boolean canCutCorner(PathType pathType) {
-        return super.canCutCorner(pathType) || pathType == PathType.WATER;
+        return super.canCutCorner(pathType)
+                || (pathType == PathType.WATER && dragonNodeEvaluator.getMode() == Mode.SWIM);
     }
 
     @Override
     protected Vec3 getTempMobPos() {
-        return mob.position().subtract(0.0D, 0, 0.0D);
+        return mob.position();
     }
 
     @Override
     protected double getGroundY(Vec3 p_217794_) {
-        return dragonNodeEvaluator.allowSwimming ? p_217794_.y : super.getGroundY(p_217794_);
+        return dragonNodeEvaluator.getMode() == Mode.SWIM ? p_217794_.y : super.getGroundY(p_217794_);
     }
 
+    private Set<BlockPos> failedTargets = Set.of();
+    private BlockPos failedFrom;
+    private long nextRetry;
+    private int retryDelay = 10;
+    private Path failedPath;
+    private Mode failedMode = Mode.GROUND;
+    private int failedAccuracy;
+    private float failedRange;
+    private int failedRegionOffset;
+    private boolean failedOffsetUpward;
+    private boolean failedCanFly;
+
     @Override
-    public void tick() {
-        super.tick();
-
-        lastPathCreationDelta++;
-    }
-
-    @Override
-    public @Nullable Path createPath(BlockPos pos, int accuracy) {
-        if (lastPathCreationDelta < TICKS_BETWEEN_PATH_CREATIONS) {
-            return null;
-        }
-        
-        lastPathCreationDelta = 0;
-
-        dragonNodeEvaluator.allowSwimming = dragon.getBreed() != null
+    protected @Nullable Path createPath(
+            Set<BlockPos> targets, int regionOffset, boolean offsetUpward, int accuracy, float followRange) {
+        if (this.path != null && !this.path.isDone() && targets.contains(getTargetPos())) return this.path;
+        boolean swimming = dragon.getBreed() != null
                 && dragon.getBreed().getImmunities().contains("drown")
-                && dragon.level.getFluidState(pos).is(Fluids.WATER);
-
-        // If the dragon's already flying, we create a flight path right away.
-        if (dragon.isFlying()) {
-            return createPathWithFlyingAllowed(pos, accuracy);
+                && targets.stream()
+                        .anyMatch(pos -> dragon.level().getFluidState(pos).is(Fluids.WATER));
+        Mode mode = swimming ? Mode.SWIM : dragon.isFlying() && dragon.canFly() ? Mode.FLIGHT : Mode.GROUND;
+        long now = level.getGameTime();
+        boolean sameFailure = targets.equals(failedTargets)
+                && failedFrom != null
+                && failedFrom.distSqr(mob.blockPosition()) <= 4
+                && mode == failedMode
+                && accuracy == failedAccuracy
+                && followRange == failedRange
+                && regionOffset == failedRegionOffset
+                && offsetUpward == failedOffsetUpward
+                && dragon.canFly() == failedCanFly;
+        if (sameFailure && now < nextRetry) {
+            return failedPath != null && !failedPath.isDone() ? failedPath : null;
         }
-
-        dragonNodeEvaluator.allowFlying = false;
-
-        // Otherwise, let's try and get a path to the target position by walking or swimming.
-        Path path = super.createPath(pos, accuracy);
-        if (path != null && path.canReach() && path.getNodeCount() > 1) {
-          return path;
+        boolean repeatedFailure = sameFailure;
+        dragonNodeEvaluator.setMode(mode);
+        Path result = search(targets, regionOffset, offsetUpward, accuracy, followRange);
+        if (mode == Mode.GROUND && dragon.canFly() && (result == null || !result.canReach())) {
+            // The vanilla cache must not return a ground path during the flight search.
+            Path previous = this.path;
+            this.path = null;
+            dragonNodeEvaluator.setMode(Mode.FLIGHT);
+            Path flight = search(targets, regionOffset, offsetUpward, accuracy, followRange);
+            this.path = previous;
+            if (flight != null
+                    && (flight.canReach() || result == null || flight.getDistToTarget() < result.getDistToTarget())) {
+                result = flight;
+                mode = Mode.FLIGHT;
+            }
+            dragonNodeEvaluator.setMode(mode);
         }
-
-        // If there's no reason for the dragon to fly, settle for the walking/swimming path.
-        var dif = mob.blockPosition().distManhattan(pos);
-        var jumpHeight = Math.max(1.125f, mob.maxUpStep());
-        if (Mth.abs(dif) < jumpHeight) {
-            return path;
+        if (result == null || !result.canReach()) {
+            retryDelay = repeatedFailure ? Math.min(80, retryDelay * 2) : 10;
+            failedTargets = Set.copyOf(targets);
+            failedFrom = mob.blockPosition();
+            failedMode = mode;
+            failedAccuracy = accuracy;
+            failedRange = followRange;
+            failedRegionOffset = regionOffset;
+            failedOffsetUpward = offsetUpward;
+            failedCanFly = dragon.canFly();
+            failedPath = result;
+            nextRetry = now + retryDelay + Math.floorMod(mob.getId(), 5);
+        } else {
+            failedTargets = Set.of();
+            failedFrom = null;
+            failedPath = null;
+            retryDelay = 10;
         }
-
-        // If walking or swimming doesn't work, let's try to fly there.
-        return createPathWithFlyingAllowed(pos, accuracy);
+        return result;
     }
 
-    private Path createPathWithFlyingAllowed(BlockPos pos, int accuracy) {
-        dragonNodeEvaluator.allowFlying = true;
-
-        Path path = super.createPath(pos, accuracy);
-        if (path == null) {
-          return path;
-        }
-
-        // If we can skip nodes that get the dragon farther away from the player to stop the dragon from travelling back
-        // when it doesn't need to, then we skip them.
-        return streamlinePath(path, pos);
-    }
-
-    private Path streamlinePath(Path path, BlockPos pos) {
-        int closestNodeDist = -1;
-        int skipToNodeIndex = 0;
-        for (int i = 0; i < path.getNodeCount(); i++) {
-            BlockPos nodePos = path.getNodePos(i);
-            int distFromDragon = mob.blockPosition().distManhattan(nodePos);
-            int distFromPlayer = pos.distManhattan(nodePos);
-            if (distFromPlayer < closestNodeDist || distFromPlayer > distFromDragon) {
-                closestNodeDist = distFromPlayer;
-                skipToNodeIndex = i;
-            } else {
-                break;
+    private @Nullable Path search(
+            Set<BlockPos> targets, int regionOffset, boolean offsetUpward, int accuracy, float followRange) {
+        long started = System.nanoTime();
+        try {
+            return super.createPath(targets, regionOffset, offsetUpward, accuracy, followRange);
+        } finally {
+            if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                DragonPathfindingBudget.recordSearch(serverLevel, System.nanoTime() - started);
             }
         }
+    }
 
-        path.setNextNodeIndex(skipToNodeIndex);
+    @Override
+    public void recomputePath() {
+        // A terrain update invalidates a previous negative result.
+        nextRetry = 0;
+        super.recomputePath();
+    }
 
-        return path;
+    public boolean isFlightPath() {
+        return dragonNodeEvaluator.getMode() == Mode.FLIGHT;
     }
 
     @Override
@@ -134,18 +151,18 @@ public class DragonPathNavigation extends FlyingPathNavigation {
 
     @Override
     protected boolean canMoveDirectly(Vec3 p_217796_, Vec3 p_217797_) {
-        return (dragonNodeEvaluator.allowSwimming
+        return (dragonNodeEvaluator.getMode() == Mode.SWIM
                 && this.mob.isInLiquid()
                 && isClearForMovementBetween(this.mob, p_217796_, p_217797_, true));
     }
 
     public boolean isStableDestination(BlockPos pPos) {
-        if (dragonNodeEvaluator.allowFlying) {
-            return this.level.getBlockState(pPos).entityCanStandOn(this.level, pPos, this.mob);
+        if (dragonNodeEvaluator.getMode() == Mode.FLIGHT) {
+            return this.level.getBlockState(pPos).isAir();
         }
 
-        if (dragonNodeEvaluator.allowSwimming) {
-            return !this.level.getBlockState(pPos.below()).isAir();
+        if (dragonNodeEvaluator.getMode() == Mode.SWIM) {
+            return this.level.getFluidState(pPos).is(Fluids.WATER);
         }
 
         BlockPos blockpos = pPos.below();

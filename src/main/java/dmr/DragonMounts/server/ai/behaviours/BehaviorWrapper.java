@@ -28,6 +28,13 @@ public class BehaviorWrapper<E extends LivingEntity> implements BehaviorControl<
 
     private final Map<MemoryModuleType<?>, MemoryStatus> entryCondition;
     private final Predicate<E> shouldStart;
+    private Predicate<E> canContinue;
+
+    public BehaviorWrapper<E> whileCondition(Predicate<E> condition) {
+        this.canContinue = condition;
+        return this;
+    }
+
     private GateBehavior.OrderPolicy orderPolicy = GateBehavior.OrderPolicy.SHUFFLED;
     private GateBehavior.RunningPolicy runningPolicy = GateBehavior.RunningPolicy.RUN_ONE;
     public final ShufflingList<BehaviorControl<? super E>> behaviors = new ShufflingList<>();
@@ -157,6 +164,11 @@ public class BehaviorWrapper<E extends LivingEntity> implements BehaviorControl<
 
     @Override
     public void tickOrStop(ServerLevel level, E entity, long gameTime) {
+        // Startup predicates and memories may legitimately change when a child starts.
+        if (canContinue != null && !canContinue.test(entity)) {
+            doStop(level, entity, gameTime);
+            return;
+        }
         this.behaviors.stream()
                 .filter(p_258342_ -> p_258342_.getStatus() == Behavior.Status.RUNNING)
                 .forEach(p_258336_ -> p_258336_.tickOrStop(level, entity, gameTime));

@@ -1,13 +1,10 @@
 package dmr.DragonMounts.server.ai;
 
+import dmr.DragonMounts.server.ai.navigation.DragonPathNavigation;
 import dmr.DragonMounts.server.entity.TameableDragonEntity;
-import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.control.MoveControl;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.neoforged.neoforge.common.NeoForgeMod;
 
@@ -37,15 +34,10 @@ public class DragonMoveController extends MoveControl {
                 return;
             }
 
-            boolean isAmphibious = !dragon.canDrownInFluidType(Fluids.WATER.getFluidType());
             boolean isInWater = this.mob.isInWater();
-
-            BlockPos blockpos = this.mob.blockPosition();
-            BlockState blockstate = this.mob.level.getBlockState(blockpos);
-
-            var shouldFly = !blockstate.isSolid() && dragon.canFly() && (!blockstate.is(Blocks.WATER) || !isAmphibious);
-            dragon.setNoGravity(shouldFly || isInWater);
+            boolean shouldFly = dragon.canFly() && ((DragonPathNavigation) dragon.getNavigation()).isFlightPath();
             dragon.setFlying(shouldFly);
+            dragon.setNoGravity(shouldFly || isInWater);
 
             float f9 = (float) ((Mth.atan2(zDif, xDif) * 180.0F) / (float) Math.PI) - 90.0F;
             this.mob.setYRot(this.rotlerp(this.mob.getYRot(), f9, 10f));
@@ -61,9 +53,9 @@ public class DragonMoveController extends MoveControl {
             }
 
             if (!isInWater) {
-                if (mob.getNavigation().getPath() != null) {
-                    mob.getNavigation().getPath().getNextNode();
-                    var type = mob.getNavigation().getPath().getNextNode().type;
+                var path = mob.getNavigation().getPath();
+                if (path != null && !path.isDone()) {
+                    var type = path.getNextNode().type;
                     if (type == PathType.WATER || type == PathType.WATER_BORDER) {
                         isInWater = true;
                     }

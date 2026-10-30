@@ -51,11 +51,11 @@ public class GoalWrapper implements BehaviorControl<TameableDragonEntity> {
 
     @Override
     public void tickOrStop(ServerLevel level, TameableDragonEntity entity, long gameTime) {
-        goal.tick();
-
         if (!goal.canContinueToUse()) {
             doStop(level, entity, gameTime);
+            return;
         }
+        goal.tick();
     }
 
     @Override
@@ -66,6 +66,6 @@ public class GoalWrapper implements BehaviorControl<TameableDragonEntity> {
 
     @Override
     public String debugString() {
-        return goal.getClass().getSimpleName();
+        return goal == null ? "Uninitialized goal" : goal.getClass().getSimpleName();
     }
 }

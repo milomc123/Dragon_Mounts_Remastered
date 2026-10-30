@@ -260,10 +260,11 @@ public class DragonAI {
      * @return The configured movement behavior
      */
     private static BehaviorControl<TameableDragonEntity> createMoveToTargetBehavior() {
-        return BehaviorFactory.withConditionAndMemory(
-                DragonAI::shouldMoveToTarget,
-                ImmutableMap.of(MemoryModuleType.WALK_TARGET, MemoryStatus.VALUE_PRESENT),
-                new MoveToTargetSink());
+        return BehaviorFactory.<TameableDragonEntity>withConditionAndMemory(
+                        DragonAI::shouldMoveToTarget,
+                        ImmutableMap.of(MemoryModuleType.WALK_TARGET, MemoryStatus.VALUE_PRESENT),
+                        new DragonMoveToTargetSink())
+                .whileCondition(DragonAI::shouldMoveToTarget);
     }
 
     /**
@@ -302,14 +303,15 @@ public class DragonAI {
      * @return The configured owner following behavior
      */
     private static BehaviorControl<TameableDragonEntity> createOwnerFollowingBehavior() {
-        return BehaviorFactory.withCondition(
-                DragonAI::shouldFollowOwner,
-                StayCloseToTarget.create(
-                        DragonAI::getOwnerPosition,
-                        e -> true,
-                        ServerConfig.MIN_FOLLOW_DISTANCE,
-                        ServerConfig.MAX_FOLLOW_DISTANCE,
-                        FOLLOW_SPEED));
+        return BehaviorFactory.<TameableDragonEntity>withCondition(
+                        DragonAI::shouldFollowOwner,
+                        StayCloseToTarget.create(
+                                DragonAI::getOwnerPosition,
+                                e -> true,
+                                ServerConfig.MIN_FOLLOW_DISTANCE,
+                                ServerConfig.MAX_FOLLOW_DISTANCE,
+                                FOLLOW_SPEED))
+                .whileCondition(DragonAI::shouldFollowOwner);
     }
 
     /**
@@ -395,7 +397,9 @@ public class DragonAI {
         boolean isRandomlySitting = dragon.isRandomlySitting();
         boolean isBreeding = dragon.isInLove() && dragon.getBrain().hasMemoryValue(MemoryModuleType.BREED_TARGET);
 
-        return !isRandomlySitting || isBreeding;
+        return !dragon.hasControllingPassenger()
+                && (!dragon.isOrderedToSit() || dragon.isFlying())
+                && (!isRandomlySitting || isBreeding);
     }
 
     /**
@@ -413,7 +417,7 @@ public class DragonAI {
         boolean isNotSitting = !dragon.isOrderedToSit();
         boolean hasNoWanderTarget = !dragon.hasWanderTarget();
 
-        return isTamed && isNotSitting && hasNoWanderTarget;
+        return isTamed && isNotSitting && hasNoWanderTarget && !dragon.hasControllingPassenger();
     }
 
     /**
@@ -431,7 +435,7 @@ public class DragonAI {
         boolean isUntamed = !dragon.isTame();
         boolean isNotSitting = !dragon.isSitting();
 
-        return (isUntamed || isIdleTimeoutReached) && isNotSitting;
+        return (isUntamed || isIdleTimeoutReached) && isNotSitting && !dragon.hasControllingPassenger();
     }
 
     /**
