@@ -802,7 +802,8 @@ public class DragonWhistleTests {
      * @param helper The game test helper
      */
     @EmptyTemplate(floor = true)
-    @GameTest(timeoutTicks = 400)
+    // The game-test server ticks faster than real time while Nether chunks load asynchronously.
+    @GameTest(timeoutTicks = 12000)
     @TestHolder
     public static void callAcrossDimensions(ExtendedGameTestHelper helper) {
         var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
@@ -863,11 +864,15 @@ public class DragonWhistleTests {
         var entityId = dragon.getUUID();
         var dragonId = dragon.getDragonUUID();
 
+        long waitStartedNanos = System.nanoTime();
         helper.startSequence()
                 .thenWaitUntil(() -> {
-                    if (!netherDim.areEntitiesLoaded(chunkPos.toLong())
-                            || !netherDim.isPositionEntityTicking(destination)) {
-                        helper.fail("Waiting for the destination chunk's entities to load and tick");
+                    boolean entitiesLoaded = netherDim.areEntitiesLoaded(chunkPos.toLong());
+                    boolean entityTicking = netherDim.isPositionEntityTicking(destination);
+                    if (!entitiesLoaded || !entityTicking) {
+                        helper.fail("Waiting for destination chunk: entitiesLoaded=" + entitiesLoaded
+                                + ", entityTicking=" + entityTicking
+                                + ", elapsedMillis=" + (System.nanoTime() - waitStartedNanos) / 1_000_000);
                     }
                 })
                 .thenExecute(() -> {
