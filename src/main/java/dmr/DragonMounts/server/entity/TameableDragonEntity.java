@@ -4,9 +4,9 @@ import com.mojang.serialization.Dynamic;
 import dmr.DragonMounts.DMR;
 import dmr.DragonMounts.ModConstants;
 import dmr.DragonMounts.common.handlers.DragonWhistleHandler;
-import dmr.DragonMounts.common.handlers.DragonWhistleHandler.DragonInstance;
 import dmr.DragonMounts.config.ServerConfig;
 import dmr.DragonMounts.registry.ModCriterionTriggers;
+import dmr.DragonMounts.registry.ModCapabilities;
 import dmr.DragonMounts.server.ai.DragonAI;
 import dmr.DragonMounts.server.entity.dragon.AbstractDragonEntity;
 import dmr.DragonMounts.server.inventory.DragonInventoryHandler.DragonInventory;
@@ -208,40 +208,23 @@ public class TameableDragonEntity extends AbstractDragonEntity {
 
     @Override
     public @Nullable Entity changeDimension(DimensionTransition transition) {
+        var sourceLevel = level();
+        var owner = DragonWhistleHandler.getOnlineOwner(this);
         var entity = super.changeDimension(transition);
 
         if (entity instanceof TameableDragonEntity dragon) {
-            var owner = getOwner();
-
-            DMR.LOGGER.debug(
-                    "Changing dimension of dragon {} to {}",
-                    getDragonUUID(),
-                    transition.newLevel().dimension().location());
-
-            if (owner instanceof Player player) {
-                var handler = PlayerStateUtils.getHandler(player);
-                var index = DragonWhistleHandler.getDragonSummonIndex(player, getDragonUUID());
+            DragonWorldDataManager.transferDragonInventory(sourceLevel, dragon.level(), getDragonUUID());
+            if (owner != null) {
+                var handler = PlayerStateUtils.getHandler(owner);
+                var index = DragonWhistleHandler.getDragonSummonIndex(owner, getDragonUUID());
                 if (index >= 0) {
-                    handler.setDragonInstance(index, new DragonInstance(dragon));
-
-                    // Update lastSummon to new UUID to prevent despawns
-                    if (handler.lastSummons.get(index) != null
-                            && handler.lastSummons.get(index).equals(getUUID())) {
-                        handler.lastSummons.put(index, entity.getUUID());
-                    }
+                    handler.setPlayerInstance(owner);
+                    handler.setDragonToWhistle(dragon, index);
+                    ModCapabilities.syncCapability(owner);
                 }
             }
-
-            var worldData1 = DragonWorldDataManager.getInstance(level);
-            var worldData2 = DragonWorldDataManager.getInstance(transition.newLevel());
-
-            // Transfer the dragon inventory
-            worldData2.dragonInventories.put(getDragonUUID(), worldData1.dragonInventories.get(getDragonUUID()));
-            worldData1.dragonInventories.remove(getDragonUUID());
-
             return dragon;
         }
-
         return null;
     }
 

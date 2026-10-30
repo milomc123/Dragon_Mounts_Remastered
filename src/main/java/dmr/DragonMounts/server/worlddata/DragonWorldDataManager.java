@@ -13,6 +13,18 @@ public class DragonWorldDataManager {
         return DragonWorldData.getInstance(level);
     }
 
+    /** Moves the shared inventory only when a real cross-dimension transfer occurs. */
+    public static void transferDragonInventory(Level source, Level destination, UUID uuid) {
+        if (source == destination) return;
+        var sourceData = getInstance(source);
+        var inventory = sourceData.dragonInventories.remove(uuid);
+        if (inventory == null) return;
+        var destinationData = getInstance(destination);
+        destinationData.dragonInventories.put(uuid, inventory);
+        sourceData.setDirty();
+        destinationData.setDirty();
+    }
+
     public static void clearDragonData(Level level, UUID uuid) {
         DragonWorldData data = DragonWorldData.getInstance(level);
         data.deadDragons.remove(uuid);

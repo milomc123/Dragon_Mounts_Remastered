@@ -53,7 +53,8 @@ public class DragonWhistleEvent {
     public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
         if (!event.getLevel().isClientSide) {
             if (event.getEntity() instanceof TameableDragonEntity dragon) {
-                if (dragon.getOwner() != null && dragon.getOwner() instanceof Player player) {
+                var player = DragonWhistleHandler.getOnlineOwner(dragon);
+                if (player != null) {
                     var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
                     var index = DragonWhistleHandler.getDragonSummonIndex(player, dragon.getDragonUUID());
 
@@ -151,7 +152,8 @@ public class DragonWhistleEvent {
                         .withStyle(ChatFormatting.RED);
 
                 // Player is online, do death handle
-                if (dragon.getOwner() != null && dragon.getOwner() instanceof Player player) {
+                var player = DragonWhistleHandler.getOnlineOwner(dragon);
+                if (player != null) {
                     // Death message already gets sent by vanilla, so until I can figure out how to
                     // cancel
                     // that, just let vanilla send the message when player is online

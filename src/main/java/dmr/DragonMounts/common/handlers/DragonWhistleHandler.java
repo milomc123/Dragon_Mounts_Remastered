@@ -84,6 +84,16 @@ public class DragonWhistleHandler {
         }
     }
 
+    /** Owner lookup for persistence, including owners in another dimension. */
+    public static Player getOnlineOwner(TameableDragonEntity dragon) {
+        var server = dragon.level().getServer();
+        if (server != null && dragon.getOwnerUUID() != null) {
+            var owner = server.getPlayerList().getPlayer(dragon.getOwnerUUID());
+            if (owner != null) return owner;
+        }
+        return dragon.getOwner() instanceof Player player ? player : null;
+    }
+
     public static DragonWhistleItem getDragonWhistleItem(Player player) {
         var state = PlayerStateUtils.getHandler(player);
         Function<DragonWhistleItem, Boolean> isValid = (DragonWhistleItem whistleItem) -> {

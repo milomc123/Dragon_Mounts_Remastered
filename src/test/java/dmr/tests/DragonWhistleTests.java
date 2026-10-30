@@ -93,6 +93,49 @@ public class DragonWhistleTests {
         helper.succeed();
     }
 
+    @EmptyTemplate(floor = true)
+    @GameTest
+    @TestHolder
+    public static void dimensionTransferPreservesInventory(ExtendedGameTestHelper helper) {
+        var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
+        var dragon = helper.spawn(ModEntities.DRAGON_ENTITY.get(), DMRTestConstants.TEST_POS);
+        dragon.setBreed(DragonBreedsRegistry.getDefault());
+        DragonWhistleHandler.setDragon(player, dragon, 1);
+        var inventory = dragon.getDragonInventory();
+        inventory.inventory.setItem(3, new ItemStack(Blocks.DIAMOND_BLOCK, 5));
+        var source = helper.getLevel();
+        var sourceData = dmr.DragonMounts.server.worlddata.DragonWorldDataManager.getInstance(source);
+        var uuid = dragon.getDragonUUID();
+        var same = (TameableDragonEntity) dragon.changeDimension(new DimensionTransition(
+                source, dragon.position().add(2, 0, 0), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING));
+        if (same.getDragonInventory() != inventory || same.getInventory().getItem(3).getCount() != 5) {
+            helper.fail("Same-dimension teleport lost inventory");
+        }
+        var nether = source.getServer().getLevel(Level.NETHER);
+        var targetData = dmr.DragonMounts.server.worlddata.DragonWorldDataManager.getInstance(nether);
+        sourceData.setDirty(false);
+        targetData.setDirty(false);
+        var moved = (TameableDragonEntity) same.changeDimension(new DimensionTransition(
+                nether, new Vec3(0, 100, 0), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING));
+        if (moved == null || moved.getDragonInventory() != inventory || moved.getInventory().getItem(3).getCount() != 5) {
+            helper.fail("Cross-dimension transfer lost inventory");
+        }
+        if (sourceData.dragonInventories.containsKey(uuid) || !sourceData.isDirty() || !targetData.isDirty()) {
+            helper.fail("Inventory transfer did not persist removal and insertion");
+        }
+        // A stale source must never overwrite an inventory that already reached the destination.
+        dmr.DragonMounts.server.worlddata.DragonWorldDataManager.transferDragonInventory(source, nether, uuid);
+        if (moved.getDragonInventory() != inventory) helper.fail("Missing source overwrote destination inventory");
+        var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
+        if (!cap.dragonInstances.get(1).getDimension().equals("minecraft:the_nether")) {
+            helper.fail("Binding location was not updated after transfer");
+        }
+        moved.discard();
+        targetData.dragonInventories.remove(uuid);
+        targetData.setDirty();
+        helper.succeed();
+    }
+
     /**
      * Tests the DragonWhistleHandler.getDragonWhistleItem method.
      *
