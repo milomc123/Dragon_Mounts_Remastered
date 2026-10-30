@@ -67,13 +67,15 @@ public class CompleteDataSync extends AbstractMessage<CompleteDataSync> {
     }
 
     @Override
-    public boolean autoSync() {
-        return true;
-    }
+    public void handle(IPayloadContext context, Player player) {}
 
     @Override
-    public void handle(IPayloadContext supplier, Player player) {
-        PlayerStateUtils.getHandler(player).deserializeNBT(player.level.registryAccess(), tag);
-        player.refreshDimensions();
+    public void handleClient(IPayloadContext context, Player player) {
+        // The payload may describe a player we started tracking, not the recipient.
+        var target = player.getId() == playerId ? player : player.level().getEntity(playerId);
+        if (target instanceof Player targetPlayer) {
+            PlayerStateUtils.getHandler(targetPlayer).deserializeNBT(targetPlayer.level().registryAccess(), tag);
+            targetPlayer.refreshDimensions();
+        }
     }
 }

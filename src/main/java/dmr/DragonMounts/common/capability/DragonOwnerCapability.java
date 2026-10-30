@@ -169,6 +169,7 @@ public class DragonOwnerCapability implements INBTSerializable<CompoundTag> {
 
         dragonsHatched = base.getInt("dragonsHatched");
 
+        lastSummons.clear();
         respawnDelays.clear();
         dragonNBTs.clear();
         dragonInstances.clear();

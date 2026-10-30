@@ -36,8 +36,7 @@ public class ModCapabilities {
     }
 
     public static void syncCapability(Player player) {
-        // player.reviveCaps();
-        PacketDistributor.sendToPlayersTrackingEntity(player, new CompleteDataSync(player));
+        PacketDistributor.sendToPlayersTrackingEntityAndSelf(player, new CompleteDataSync(player));
     }
 
     @SubscribeEvent

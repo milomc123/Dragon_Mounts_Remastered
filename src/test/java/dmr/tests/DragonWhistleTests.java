@@ -32,6 +32,29 @@ import net.neoforged.testframework.gametest.ExtendedGameTestHelper;
 @ForEachTest(groups = "Dragon Whistles")
 public class DragonWhistleTests {
 
+    @EmptyTemplate
+    @GameTest
+    @TestHolder
+    public static void completeSyncTargetsNamedPlayer(ExtendedGameTestHelper helper) {
+        var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
+        var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
+        cap.dragonsHatched = 7;
+        var tag = new CompoundTag();
+        tag.putInt("dragonsHatched", 42);
+        var foreignPacket = new dmr.DragonMounts.network.packets.CompleteDataSync(Integer.MAX_VALUE, tag);
+        foreignPacket.handleClient(null, player);
+        if (cap.dragonsHatched != 7) helper.fail("Another player's packet overwrote the recipient");
+        var ownPacket = new dmr.DragonMounts.network.packets.CompleteDataSync(player.getId(), tag);
+        ownPacket.handle(null, player);
+        if (cap.dragonsHatched != 7) helper.fail("Server accepted client-supplied owner data");
+        cap.lastSummons.put(0, UUID.randomUUID());
+        ownPacket.handleClient(null, player);
+        if (cap.dragonsHatched != 42 || !cap.lastSummons.isEmpty()) {
+            helper.fail("Own snapshot did not replace capability state completely");
+        }
+        helper.succeed();
+    }
+
     /**
      * Tests the DragonWhistleHandler.getDragonWhistleItem method.
      *
