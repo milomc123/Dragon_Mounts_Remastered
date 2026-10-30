@@ -74,7 +74,8 @@ public class CompleteDataSync extends AbstractMessage<CompleteDataSync> {
         // The payload may describe a player we started tracking, not the recipient.
         var target = player.getId() == playerId ? player : player.level().getEntity(playerId);
         if (target instanceof Player targetPlayer) {
-            PlayerStateUtils.getHandler(targetPlayer).deserializeNBT(targetPlayer.level().registryAccess(), tag);
+            PlayerStateUtils.getHandler(targetPlayer)
+                    .deserializeNBT(targetPlayer.level().registryAccess(), tag);
             targetPlayer.refreshDimensions();
         }
     }
