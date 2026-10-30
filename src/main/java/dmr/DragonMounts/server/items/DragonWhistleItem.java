@@ -143,6 +143,7 @@ public class DragonWhistleItem extends Item {
                         cap.dragonInstances.remove(color.getId());
                         cap.dragonNBTs.remove(color.getId());
                         cap.respawnDelays.remove(color.getId());
+                        cap.lastSummons.remove(color.getId());
                         pPlayer.displayClientMessage(Component.translatable("dmr.dragon_call.unlink_success"), true);
                         PacketDistributor.sendToPlayer((ServerPlayer) pPlayer, new CompleteDataSync(pPlayer));
                     }

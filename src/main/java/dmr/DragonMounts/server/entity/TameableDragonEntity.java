@@ -221,12 +221,14 @@ public class TameableDragonEntity extends AbstractDragonEntity {
             if (owner instanceof Player player) {
                 var handler = PlayerStateUtils.getHandler(player);
                 var index = DragonWhistleHandler.getDragonSummonIndex(player, getDragonUUID());
-                handler.setDragonInstance(index, new DragonInstance(dragon));
+                if (index >= 0) {
+                    handler.setDragonInstance(index, new DragonInstance(dragon));
 
-                // Update lastSummon to new UUID to prevent despawns
-                if (handler.lastSummons.get(index) != null
-                        && handler.lastSummons.get(index).equals(getUUID())) {
-                    handler.lastSummons.put(index, entity.getUUID());
+                    // Update lastSummon to new UUID to prevent despawns
+                    if (handler.lastSummons.get(index) != null
+                            && handler.lastSummons.get(index).equals(getUUID())) {
+                        handler.lastSummons.put(index, entity.getUUID());
+                    }
                 }
             }
 

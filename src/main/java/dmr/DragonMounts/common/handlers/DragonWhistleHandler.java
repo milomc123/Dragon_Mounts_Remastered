@@ -141,7 +141,7 @@ public class DragonWhistleHandler {
                         entry.getValue() != null && entry.getValue().UUID.equals(dragonUUID))
                 .map(Entry::getKey)
                 .findFirst()
-                .orElse(0);
+                .orElse(-1);
     }
 
     public static void setDragon(Player player, TameableDragonEntity dragon, int index) {

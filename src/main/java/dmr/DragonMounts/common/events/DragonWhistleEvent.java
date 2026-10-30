@@ -57,7 +57,7 @@ public class DragonWhistleEvent {
                     var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
                     var index = DragonWhistleHandler.getDragonSummonIndex(player, dragon.getDragonUUID());
 
-                    if (cap.lastSummons != null && !cap.lastSummons.isEmpty()) {
+                    if (index >= 0) {
                         if (cap.lastSummons.containsKey(index)
                                 && !cap.lastSummons.get(index).equals(dragon.getUUID())) {
                             DMR.LOGGER.debug(
@@ -158,6 +158,7 @@ public class DragonWhistleEvent {
                     player.displayClientMessage(mes, false);
 
                     var index = DragonWhistleHandler.getDragonSummonIndex(player, dragon.getDragonUUID());
+                    if (index < 0) return;
 
                     if (!ServerConfig.ALLOW_RESPAWN) {
                         var state = player.getData(ModCapabilities.PLAYER_CAPABILITY);

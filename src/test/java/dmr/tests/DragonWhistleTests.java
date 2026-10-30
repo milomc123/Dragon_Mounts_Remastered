@@ -55,6 +55,44 @@ public class DragonWhistleTests {
         helper.succeed();
     }
 
+    @EmptyTemplate(floor = true)
+    @GameTest
+    @TestHolder
+    public static void unboundDragonCannotChangeWhiteBinding(ExtendedGameTestHelper helper) {
+        var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
+        var bound = helper.spawn(ModEntities.DRAGON_ENTITY.get(), DMRTestConstants.TEST_POS);
+        bound.setBreed(DragonBreedsRegistry.getDefault());
+        DragonWhistleHandler.setDragon(player, bound, 0);
+        var unbound = helper.spawn(ModEntities.DRAGON_ENTITY.get(), DMRTestConstants.TEST_POS.offset(3, 0, 0));
+        unbound.setBreed(DragonBreedsRegistry.getDefault());
+        unbound.tamedFor(player, true);
+        if (DragonWhistleHandler.getDragonSummonIndex(player, unbound.getDragonUUID()) != -1) {
+            helper.fail("Unbound dragon resolved to a real whistle slot");
+        }
+        var join = new net.neoforged.neoforge.event.entity.EntityJoinLevelEvent(unbound, helper.getLevel());
+        dmr.DragonMounts.common.events.DragonWhistleEvent.onEntityJoinWorld(join);
+        if (join.isCanceled()) helper.fail("Unbound dragon was rejected by another dragon's summon ID");
+        var nether = helper.getLevel().getServer().getLevel(Level.NETHER);
+        unbound.changeDimension(new DimensionTransition(
+                nether, new Vec3(0, 100, 0), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING));
+        var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
+        if (!cap.dragonInstances.get(0).getUUID().equals(bound.getDragonUUID())) {
+            helper.fail("Unbound dragon's dimension transfer replaced the white whistle binding");
+        }
+        var allowRespawn = dmr.DragonMounts.config.ServerConfig.ALLOW_RESPAWN;
+        try {
+            dmr.DragonMounts.config.ServerConfig.ALLOW_RESPAWN = false;
+            dmr.DragonMounts.common.events.DragonWhistleEvent.onEntityDeath(
+                    new net.neoforged.neoforge.event.entity.living.LivingDeathEvent(unbound, unbound.damageSources().generic()));
+            if (!cap.dragonInstances.get(0).getUUID().equals(bound.getDragonUUID())) {
+                helper.fail("Unbound dragon's death cleared the white whistle binding");
+            }
+        } finally {
+            dmr.DragonMounts.config.ServerConfig.ALLOW_RESPAWN = allowRespawn;
+        }
+        helper.succeed();
+    }
+
     /**
      * Tests the DragonWhistleHandler.getDragonWhistleItem method.
      *
