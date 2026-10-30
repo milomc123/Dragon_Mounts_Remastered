@@ -1,0 +1,31 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main, fork]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle.properties', 'build.gradle', 'settings.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle-
+      - name: Build and run tests
+        run: nix develop --command bash -c 'bash ./gradlew assemble test runGameTestServer'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dragon-mounts-fork-jar
+          path: build/libs/*.jar
+          if-no-files-found: error

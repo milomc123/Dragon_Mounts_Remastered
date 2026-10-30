@@ -1,5 +1,7 @@
 # Dragon Mounts Remastered
 
+> **Fork notice:** This is an independently maintained fork of [Dragon Mounts Remastered](https://github.com/Wyrmheart-Team/Dragon_Mounts_Remastered) by the Wyrmheart Team, whose repository is now archived. It includes performance improvements and fixes to dragon navigation, combat, whistle behavior, persistence, and network authorization. This branch targets Minecraft 1.21.1. The download and community links below refer to the original project. See this fork's [releases](https://github.com/milomc123/Dragon_Mounts_Remastered/releases) and [issue tracker](https://github.com/milomc123/Dragon_Mounts_Remastered/issues).
+
 Dragon Mounts Remastered (DMR) is a Minecraft mod that allows players to tame, ride, and breed dragons. It builds upon the foundation of the original Dragon Mounts mod by BarracudaATA, adding new features, mechanics, and enhanced visuals.
 
 ## Table of Contents
@@ -9,6 +11,7 @@ Dragon Mounts Remastered (DMR) is a Minecraft mod that allows players to tame, r
   - [Requirements](#requirements)
   - [Setup](#setup)
 - [Usage](#usage)
+- [Development with Nix](#development-with-nix)
 - [Contributing](#contributing)
 - [License](#license)
 - [Contact](#contact)
@@ -46,6 +49,17 @@ Dragon Mounts Remastered (DMR) is a Minecraft mod that allows players to tame, r
 - **Riding Dragons**: Equip adult dragons with a saddle, then right-click to ride and control them.
 - **Binding Whistle**: The dragon whistle can be bound to a dragon by holding it in your hand and shift right-clicking the dragon.
 - **Summon Dragon**: Once you have bound a dragon whistle to your dragon you can use it to summon your dragon.
+
+## Development with Nix
+
+Install [Nix](https://nixos.org/download/) with flakes enabled, then run:
+
+```sh
+nix develop
+bash ./gradlew assemble test runGameTestServer
+```
+
+The development shell provides Java 21, Python 3, and Git. The Gradle wrapper downloads Gradle and the project dependencies on first use. The built JAR is in `build/libs/`. CI uses the same Nix shell and uploads a build artifact without publishing a release. You can also build without Nix using Java 21.
 
 ## Contributing
 

@@ -20,4 +20,6 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Additional context**
+Please include the fork version, Minecraft and NeoForge versions, and relevant logs.
+
 Add any other context about the problem here.
