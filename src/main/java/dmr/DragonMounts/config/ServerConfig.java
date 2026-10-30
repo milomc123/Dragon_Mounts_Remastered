@@ -7,6 +7,16 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class ServerConfig {
     public static final ModConfigSpec MOD_CONFIG_SPEC;
+    private static volatile long revision;
+
+    public static long revision() {
+        return revision;
+    }
+
+    public static void invalidateEntityAttributes() {
+        revision++;
+    }
+
     @Config(
             key = "pathfinding_budget_ms",
             category = "performance",

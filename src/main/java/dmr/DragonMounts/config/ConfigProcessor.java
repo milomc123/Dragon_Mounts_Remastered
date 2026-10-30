@@ -128,6 +128,7 @@ public class ConfigProcessor {
                 throw new RuntimeException("Failed to update config field: " + field.getName(), e);
             }
         }
+        if (configClass == ServerConfig.class) ServerConfig.invalidateEntityAttributes();
     }
 
     /**

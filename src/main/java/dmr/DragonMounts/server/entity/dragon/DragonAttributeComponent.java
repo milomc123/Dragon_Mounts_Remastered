@@ -85,12 +85,32 @@ abstract class DragonAttributeComponent extends DragonSpawnComponent {
     private static final ResourceLocation RANDOM_STATS_MODIFIER =
             ResourceLocation.fromNamespaceAndPath(DMR.MOD_ID, "random_stats_attribute");
 
+    private long appliedConfigRevision = Long.MIN_VALUE;
+    private float appliedHealth = Float.NaN;
+    private float appliedDamage = Float.NaN;
+    private float appliedSpeed = Float.NaN;
+
     public void tick() {
         super.tick();
 
+        if (level().isClientSide) return;
+        float health = entityData.get(healthAttribute);
+        float damage = entityData.get(damageAttribute);
+        float speed = entityData.get(speedAttribute);
+        if (appliedConfigRevision == ServerConfig.revision()
+                && appliedHealth == health
+                && appliedDamage == damage
+                && appliedSpeed == speed) return;
+        appliedConfigRevision = ServerConfig.revision();
+        appliedHealth = health;
+        appliedDamage = damage;
+        appliedSpeed = speed;
+
         setBaseValue(MAX_HEALTH, ServerConfig.BASE_HEALTH);
         setBaseValue(ATTACK_DAMAGE, ServerConfig.BASE_DAMAGE);
-        setBaseValue(MOVEMENT_SPEED, DragonConstants.BASE_SPEED_GROUND * ServerConfig.BASE_WALKING_SPEED * ServerConfig.BASE_SPEED);
+        setBaseValue(
+                MOVEMENT_SPEED,
+                DragonConstants.BASE_SPEED_GROUND * ServerConfig.BASE_WALKING_SPEED * ServerConfig.BASE_SPEED);
         setBaseValue(FLYING_SPEED, DragonConstants.BASE_SPEED_FLYING * ServerConfig.BASE_FLYING_SPEED);
         setBaseValue(SWIM_SPEED, DragonConstants.BASE_SPEED_WATER * ServerConfig.BASE_SWIMMING_SPEED);
 

@@ -101,19 +101,43 @@ abstract class DragonBreedableComponent extends DragonBreedComponent {
 
     /** Sets the age of the dragon. */
     public void setAge(int pAge) {
+        int previousAge = getAge();
         super.setAge(pAge);
         // Don't call dragon.setAge(pAge) here to avoid stack overflow
         // The TameableDragonEntity.setAge already calls super.setAge(pAge)
-        if (!level().isClientSide) {
+        if (!level().isClientSide && (Math.abs((long) pAge - previousAge) != 1 || pAge == 0 || pAge % 20 == 0)) {
             PacketDistributor.sendToPlayersTrackingEntity(this, new DragonAgeSyncPacket(getId(), pAge));
         }
         updateAgeProperties();
     }
 
+    @Override
+    public void aiStep() {
+        super.aiStep();
+        // Predict ordinary age progression between the periodic authoritative snapshots.
+        if (level().isClientSide && age != 0) {
+            age += age < 0 ? 1 : -1;
+            updateAgeProperties();
+        }
+    }
+
     /** Updates the age-related properties of the dragon. */
+    private float lastAgeScale = Float.NaN;
+
+    private float lastAttributeAgeProgress = Float.NaN;
+
     public void updateAgeProperties() {
-        refreshDimensions();
-        getDragon().updateAgeAttributes();
+        float scale = getScale();
+        boolean scaleChanged = scale != lastAgeScale;
+        if (scaleChanged) {
+            lastAgeScale = scale;
+            refreshDimensions();
+        }
+        float progress = getAgeProgress();
+        if (scaleChanged || progress != lastAttributeAgeProgress) {
+            lastAttributeAgeProgress = progress;
+            getDragon().updateAgeAttributes();
+        }
     }
 
     /**
