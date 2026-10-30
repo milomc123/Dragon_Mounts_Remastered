@@ -125,6 +125,18 @@ public class PacketHelper {
         registrar.playBidirectional(type, packet.streamCodec(), PacketHelper::handlePacket);
     }
 
+    @SuppressWarnings("unchecked")
+    public static <T extends IMessage<T>> void registerClientboundPacket(PayloadRegistrar registrar, T packet) {
+        registrar.playToClient(
+                (CustomPacketPayload.Type<T>) packet.type(), packet.streamCodec(), PacketHelper::handlePacket);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T extends IMessage<T>> void registerServerboundPacket(PayloadRegistrar registrar, T packet) {
+        registrar.playToServer(
+                (CustomPacketPayload.Type<T>) packet.type(), packet.streamCodec(), PacketHelper::handlePacket);
+    }
+
     /**
      * Handles a packet by dispatching it to the appropriate handler.
      *

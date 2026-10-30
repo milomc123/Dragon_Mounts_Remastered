@@ -63,7 +63,10 @@ public class BlankEggSyncPacket extends AbstractMessage<BlankEggSyncPacket> {
     }
 
     @Override
-    public void handle(IPayloadContext supplier, Player player) {
+    public void handle(IPayloadContext supplier, Player player) {}
+
+    @Override
+    public void handleClient(IPayloadContext supplier, Player player) {
         var level = player.level();
         var blockEntity = level.getBlockEntity(new BlockPos(pos.getX(), pos.getY(), pos.getZ()));
 

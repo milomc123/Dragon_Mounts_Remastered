@@ -9,6 +9,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.world.entity.player.Player;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
@@ -57,21 +58,20 @@ public class DismountDragonPacket extends AbstractMessage<DismountDragonPacket> 
         return STREAM_CODEC;
     }
 
-    @Override
-    public boolean autoSync() {
-        return true;
-    }
-
     public void handle(IPayloadContext supplier, Player player) {
         var level = player.level;
         var entity = level.getEntity(entityId);
 
         if (entity instanceof Player player1) {
+            if (!level.isClientSide && player1 != player) return;
             DragonOwnerCapability cap = player1.getData(ModCapabilities.PLAYER_CAPABILITY);
             cap.shouldDismount = state;
 
             if (state) {
                 player1.stopRiding();
+            }
+            if (!level.isClientSide) {
+                PacketDistributor.sendToPlayersTrackingEntityAndSelf(player1, this);
             }
         }
     }

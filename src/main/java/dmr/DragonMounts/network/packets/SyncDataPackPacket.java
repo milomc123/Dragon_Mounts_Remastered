@@ -29,7 +29,10 @@ public class SyncDataPackPacket extends AbstractMessage<SyncDataPackPacket> {
     }
 
     @Override
-    public void handle(IPayloadContext context, Player player) {
+    public void handle(IPayloadContext context, Player player) {}
+
+    @Override
+    public void handleClient(IPayloadContext context, Player player) {
         DataPackHandler.run(player.level());
     }
 }

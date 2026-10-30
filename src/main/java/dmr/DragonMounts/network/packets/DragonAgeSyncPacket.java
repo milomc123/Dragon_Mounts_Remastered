@@ -54,7 +54,10 @@ public class DragonAgeSyncPacket extends AbstractMessage<DragonAgeSyncPacket> {
     }
 
     @Override
-    public void handle(IPayloadContext context, Player player) {
+    public void handle(IPayloadContext context, Player player) {}
+
+    @Override
+    public void handleClient(IPayloadContext context, Player player) {
         var dragon = player.level.getEntity(dragonId);
 
         if (dragon instanceof TameableDragonEntity dragonEntity) {

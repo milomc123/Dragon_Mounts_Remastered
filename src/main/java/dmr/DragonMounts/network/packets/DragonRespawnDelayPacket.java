@@ -54,7 +54,10 @@ public class DragonRespawnDelayPacket extends AbstractMessage<DragonRespawnDelay
     }
 
     @Override
-    public void handle(IPayloadContext context, Player player) {
+    public void handle(IPayloadContext context, Player player) {}
+
+    @Override
+    public void handleClient(IPayloadContext context, Player player) {
         var state = player.getData(ModCapabilities.PLAYER_CAPABILITY);
         state.respawnDelays.put(index, delay);
     }

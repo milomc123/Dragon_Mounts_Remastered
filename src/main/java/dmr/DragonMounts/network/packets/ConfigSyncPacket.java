@@ -147,6 +147,7 @@ public class ConfigSyncPacket extends AbstractMessage<ConfigSyncPacket> {
      */
     @Override
     public void handle(IPayloadContext context, Player player) {
+        if (clientToServer == player.level().isClientSide) return;
         // Apply the synced config values
         for (String key : configData.getAllKeys()) {
             var configField = ConfigProcessor.getSyncedConfigs().get(key);

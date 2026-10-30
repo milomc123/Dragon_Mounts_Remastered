@@ -88,6 +88,7 @@ public class DragonCommandPacket extends AbstractMessage<DragonCommandPacket> {
 
     @Override
     public void handleServer(IPayloadContext context, ServerPlayer player) {
+        if (command < 0 || command >= Command.values().length) return;
         var level = (ServerLevel) player.level;
 
         var whistleItem = DragonWhistleHandler.getDragonWhistleItem(player);
@@ -112,7 +113,10 @@ public class DragonCommandPacket extends AbstractMessage<DragonCommandPacket> {
 
         var dragonEntity = level.getEntity(instance.getEntityId());
 
-        if (dragonEntity instanceof TameableDragonEntity dragon) {
+        if (dragonEntity instanceof TameableDragonEntity dragon
+                && dragon.isAlive()
+                && dragon.isOwnedBy(player)
+                && instance.getUUID().equals(dragon.getDragonUUID())) {
             switch (cmd) {
                 case SIT -> {
                     dragon.setWanderTarget(Optional.empty());

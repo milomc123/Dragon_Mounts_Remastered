@@ -7,6 +7,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -53,11 +54,17 @@ public class DragonBreathPacket extends AbstractMessage<DragonBreathPacket> {
     }
 
     @Override
-    public void handle(IPayloadContext context, Player player) {
+    public void handle(IPayloadContext context, Player player) {}
+
+    @Override
+    public void handleServer(IPayloadContext context, ServerPlayer player) {
         var level = player.level;
         var entity = player.level.getEntity(entityId);
 
-        if (entity instanceof TameableDragonEntity dragon) {
+        if (entity instanceof TameableDragonEntity dragon
+                && dragon.isAlive()
+                && dragon.isOwnedBy(player)
+                && dragon.getControllingPassenger() == player) {
             Vec3 eyePos = player.getEyePosition();
             Vec3 lookVector = player.getLookAngle();
             Vec3 targetPos = eyePos.add(lookVector.scale(10));

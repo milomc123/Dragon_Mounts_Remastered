@@ -32,28 +32,28 @@ public class PacketRegistry {
     private static void registerPackets(PayloadRegistrar registrar) {
         // Dragon state and control packets
         PacketHelper.registerPacket(registrar, new DragonStatePacket());
-        PacketHelper.registerPacket(registrar, new DragonCommandPacket());
-        PacketHelper.registerPacket(registrar, new SummonDragonPacket());
+        PacketHelper.registerServerboundPacket(registrar, new DragonCommandPacket());
+        PacketHelper.registerServerboundPacket(registrar, new SummonDragonPacket());
         PacketHelper.registerPacket(registrar, new DismountDragonPacket());
 
         // Dragon data sync packets
-        PacketHelper.registerPacket(registrar, new SyncDataPackPacket());
-        PacketHelper.registerPacket(registrar, new CompleteDataSync());
-        PacketHelper.registerPacket(registrar, new DragonAgeSyncPacket());
-        PacketHelper.registerPacket(registrar, new DragonRespawnDelayPacket());
-        PacketHelper.registerPacket(registrar, new DragonNBTSync());
+        PacketHelper.registerClientboundPacket(registrar, new SyncDataPackPacket());
+        PacketHelper.registerClientboundPacket(registrar, new CompleteDataSync());
+        PacketHelper.registerClientboundPacket(registrar, new DragonAgeSyncPacket());
+        PacketHelper.registerClientboundPacket(registrar, new DragonRespawnDelayPacket());
+        PacketHelper.registerClientboundPacket(registrar, new DragonNBTSync());
 
         // Dragon action packets
-        PacketHelper.registerPacket(registrar, new DragonAttackPacket());
-        PacketHelper.registerPacket(registrar, new DragonBreathPacket());
-        PacketHelper.registerPacket(registrar, new DragonBreathTargetSyncPacket());
+        PacketHelper.registerServerboundPacket(registrar, new DragonAttackPacket());
+        PacketHelper.registerServerboundPacket(registrar, new DragonBreathPacket());
+        PacketHelper.registerClientboundPacket(registrar, new DragonBreathTargetSyncPacket());
 
         // Client configuration packets
         PacketHelper.registerPacket(registrar, new ConfigSyncPacket());
 
         // Egg and inventory packets
-        PacketHelper.registerPacket(registrar, new BlankEggSyncPacket());
-        PacketHelper.registerPacket(registrar, new RequestDragonInventoryPacket());
-        PacketHelper.registerPacket(registrar, new ClearDragonInventoryPacket());
+        PacketHelper.registerClientboundPacket(registrar, new BlankEggSyncPacket());
+        PacketHelper.registerClientboundPacket(registrar, new RequestDragonInventoryPacket());
+        PacketHelper.registerClientboundPacket(registrar, new ClearDragonInventoryPacket());
     }
 }

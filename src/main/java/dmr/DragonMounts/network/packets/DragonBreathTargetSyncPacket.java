@@ -145,7 +145,10 @@ public class DragonBreathTargetSyncPacket extends AbstractMessage<DragonBreathTa
     }
 
     @Override
-    public void handle(IPayloadContext context, Player player) {
+    public void handle(IPayloadContext context, Player player) {}
+
+    @Override
+    public void handleClient(IPayloadContext context, Player player) {
         var level = player.level;
         var entity = level.getEntity(dragonId);
 

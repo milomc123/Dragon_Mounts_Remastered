@@ -54,10 +54,16 @@ public class DragonAttackPacket extends AbstractMessage<DragonAttackPacket> {
     }
 
     @Override
-    public void handle(IPayloadContext context, Player player) {
+    public void handle(IPayloadContext context, Player player) {}
+
+    @Override
+    public void handleServer(IPayloadContext context, ServerPlayer player) {
         var entity = player.level.getEntity(entityId);
 
-        if (entity instanceof TameableDragonEntity dragon) {
+        if (entity instanceof TameableDragonEntity dragon
+                && dragon.isAlive()
+                && dragon.isOwnedBy(player)
+                && dragon.getControllingPassenger() == player) {
             dragon.swing(InteractionHand.MAIN_HAND);
             dragon.triggerAnim("head-controller", "bite");
 
