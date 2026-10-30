@@ -1,0 +1,10 @@
+{
+  "base_ref": "main",
+  "base_commit": "a8f8c2774a86e5aa61a4f6287751e80d060a55bd",
+  "performance_head": "a8f8c2774a86e5aa61a4f6287751e80d060a55bd",
+  "performance_diff": "performance.patch",
+  "rounds": 2,
+  "reused_first_baseline": "/private/tmp/dmr-benchmark-final/main-1",
+  "java": "openjdk version \"21.0.3\" 2024-04-16 LTS\nOpenJDK Runtime Environment Temurin-21.0.3+9 (build 21.0.3+9-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.3+9 (build 21.0.3+9-LTS, mixed mode)\n",
+  "method": "100 warmup + 200 measured ticks per scenario; sequential servers; alternating branch order; identical fixed attributes and RNG seeds; 2 GiB heap"
+}

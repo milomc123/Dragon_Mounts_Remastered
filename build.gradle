@@ -181,3 +181,13 @@ tasks.named('spotlessCheck') {
 tasks.named('build') {
     dependsOn tasks.named('spotlessApply')
 }
+// The harness is deliberately excluded from production jars and ordinary runs.
+if (providers.gradleProperty('dragonBenchmark').isPresent()) {
+    sourceSets.main.java.srcDir('tools/benchmark/java')
+    neoForge.runs.server {
+        gameDirectory = file(providers.gradleProperty('dragonBenchmark').get())
+        systemProperty 'dmr.benchmark', 'true'
+        logLevel = Level.INFO
+        jvmArguments.addAll('-Xms2G', '-Xmx2G')
+    }
+}
