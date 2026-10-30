@@ -1,0 +1,76 @@
+name: Prepare GitHub release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          mapfile -t versions < <(sed -n 's/^mod_version=//p' gradle.properties)
+          if [[ ${#versions[@]} -ne 1 || "v${versions[0]}" != "$RELEASE_TAG" ]]; then
+            echo "The tag must match the single mod_version in gradle.properties." >&2
+            exit 1
+          fi
+      - uses: cachix/install-nix-action@v31
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle.properties', 'build.gradle', 'settings.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle-
+      - name: Build and run tests
+        run: nix develop --command bash -c 'bash ./gradlew clean assemble test runGameTestServer'
+      - name: Check release JAR
+        run: |
+          shopt -s nullglob
+          jars=(build/libs/*.jar)
+          if (( ${#jars[@]} != 1 )); then
+            echo "Expected exactly one release JAR, found ${#jars[@]}." >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+  draft-release:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-jar
+          path: release
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          shopt -s nullglob
+          jars=(release/*.jar)
+          if (( ${#jars[@]} != 1 )); then
+            echo "Expected exactly one release JAR, found ${#jars[@]}." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" "${jars[0]}" \
+            --verify-tag --draft --generate-notes --title "$RELEASE_TAG"
