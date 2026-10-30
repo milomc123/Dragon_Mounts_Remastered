@@ -1,14 +1,18 @@
 package dmr.tests;
 
 import dmr.DMRTestConstants;
+import dmr.DragonMounts.common.events.DragonWhistleEvent;
 import dmr.DragonMounts.common.handlers.DragonWhistleHandler;
 import dmr.DragonMounts.common.handlers.DragonWhistleHandler.DragonInstance;
+import dmr.DragonMounts.config.ServerConfig;
+import dmr.DragonMounts.network.packets.CompleteDataSync;
 import dmr.DragonMounts.registry.DragonBreedsRegistry;
 import dmr.DragonMounts.registry.ModCapabilities;
 import dmr.DragonMounts.registry.ModEntities;
 import dmr.DragonMounts.registry.ModItems;
 import dmr.DragonMounts.server.entity.TameableDragonEntity;
 import dmr.DragonMounts.server.items.DragonWhistleItem;
+import dmr.DragonMounts.server.worlddata.DragonWorldDataManager;
 import dmr.DragonMounts.util.PlayerStateUtils;
 import java.util.Objects;
 import java.util.UUID;
@@ -16,12 +20,15 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.portal.DimensionTransition;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import net.neoforged.testframework.annotation.ForEachTest;
 import net.neoforged.testframework.annotation.TestHolder;
@@ -41,10 +48,16 @@ public class DragonWhistleTests {
         cap.dragonsHatched = 7;
         var tag = new CompoundTag();
         tag.putInt("dragonsHatched", 42);
-        var foreignPacket = new dmr.DragonMounts.network.packets.CompleteDataSync(Integer.MAX_VALUE, tag);
+        var foreignPacket = new CompleteDataSync(Integer.MAX_VALUE, tag);
         foreignPacket.handleClient(null, player);
         if (cap.dragonsHatched != 7) helper.fail("Another player's packet overwrote the recipient");
-        var ownPacket = new dmr.DragonMounts.network.packets.CompleteDataSync(player.getId(), tag);
+        var trackedPlayer = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
+        var trackedPacket = new CompleteDataSync(trackedPlayer.getId(), tag);
+        trackedPacket.handleClient(null, player);
+        if (cap.dragonsHatched != 7 || trackedPlayer.getData(ModCapabilities.PLAYER_CAPABILITY).dragonsHatched != 42) {
+            helper.fail("Tracking snapshot was not applied exclusively to the named player");
+        }
+        var ownPacket = new CompleteDataSync(player.getId(), tag);
         ownPacket.handle(null, player);
         if (cap.dragonsHatched != 7) helper.fail("Server accepted client-supplied owner data");
         cap.lastSummons.put(0, UUID.randomUUID());
@@ -69,8 +82,8 @@ public class DragonWhistleTests {
         if (DragonWhistleHandler.getDragonSummonIndex(player, unbound.getDragonUUID()) != -1) {
             helper.fail("Unbound dragon resolved to a real whistle slot");
         }
-        var join = new net.neoforged.neoforge.event.entity.EntityJoinLevelEvent(unbound, helper.getLevel());
-        dmr.DragonMounts.common.events.DragonWhistleEvent.onEntityJoinWorld(join);
+        var join = new EntityJoinLevelEvent(unbound, helper.getLevel());
+        DragonWhistleEvent.onEntityJoinWorld(join);
         if (join.isCanceled()) helper.fail("Unbound dragon was rejected by another dragon's summon ID");
         var nether = helper.getLevel().getServer().getLevel(Level.NETHER);
         unbound.changeDimension(new DimensionTransition(
@@ -79,16 +92,16 @@ public class DragonWhistleTests {
         if (!cap.dragonInstances.get(0).getUUID().equals(bound.getDragonUUID())) {
             helper.fail("Unbound dragon's dimension transfer replaced the white whistle binding");
         }
-        var allowRespawn = dmr.DragonMounts.config.ServerConfig.ALLOW_RESPAWN;
+        var allowRespawn = ServerConfig.ALLOW_RESPAWN;
         try {
-            dmr.DragonMounts.config.ServerConfig.ALLOW_RESPAWN = false;
-            dmr.DragonMounts.common.events.DragonWhistleEvent.onEntityDeath(
-                    new net.neoforged.neoforge.event.entity.living.LivingDeathEvent(unbound, unbound.damageSources().generic()));
+            ServerConfig.ALLOW_RESPAWN = false;
+            DragonWhistleEvent.onEntityDeath(
+                    new LivingDeathEvent(unbound, unbound.damageSources().generic()));
             if (!cap.dragonInstances.get(0).getUUID().equals(bound.getDragonUUID())) {
                 helper.fail("Unbound dragon's death cleared the white whistle binding");
             }
         } finally {
-            dmr.DragonMounts.config.ServerConfig.ALLOW_RESPAWN = allowRespawn;
+            ServerConfig.ALLOW_RESPAWN = allowRespawn;
         }
         helper.succeed();
     }
@@ -104,27 +117,30 @@ public class DragonWhistleTests {
         var inventory = dragon.getDragonInventory();
         inventory.inventory.setItem(3, new ItemStack(Blocks.DIAMOND_BLOCK, 5));
         var source = helper.getLevel();
-        var sourceData = dmr.DragonMounts.server.worlddata.DragonWorldDataManager.getInstance(source);
+        var sourceData = DragonWorldDataManager.getInstance(source);
         var uuid = dragon.getDragonUUID();
         var same = (TameableDragonEntity) dragon.changeDimension(new DimensionTransition(
                 source, dragon.position().add(2, 0, 0), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING));
-        if (same.getDragonInventory() != inventory || same.getInventory().getItem(3).getCount() != 5) {
+        if (same.getDragonInventory() != inventory
+                || same.getInventory().getItem(3).getCount() != 5) {
             helper.fail("Same-dimension teleport lost inventory");
         }
         var nether = source.getServer().getLevel(Level.NETHER);
-        var targetData = dmr.DragonMounts.server.worlddata.DragonWorldDataManager.getInstance(nether);
+        var targetData = DragonWorldDataManager.getInstance(nether);
         sourceData.setDirty(false);
         targetData.setDirty(false);
         var moved = (TameableDragonEntity) same.changeDimension(new DimensionTransition(
                 nether, new Vec3(0, 100, 0), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING));
-        if (moved == null || moved.getDragonInventory() != inventory || moved.getInventory().getItem(3).getCount() != 5) {
+        if (moved == null
+                || moved.getDragonInventory() != inventory
+                || moved.getInventory().getItem(3).getCount() != 5) {
             helper.fail("Cross-dimension transfer lost inventory");
         }
         if (sourceData.dragonInventories.containsKey(uuid) || !sourceData.isDirty() || !targetData.isDirty()) {
             helper.fail("Inventory transfer did not persist removal and insertion");
         }
         // A stale source must never overwrite an inventory that already reached the destination.
-        dmr.DragonMounts.server.worlddata.DragonWorldDataManager.transferDragonInventory(source, nether, uuid);
+        DragonWorldDataManager.transferDragonInventory(source, nether, uuid);
         if (moved.getDragonInventory() != inventory) helper.fail("Missing source overwrote destination inventory");
         var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
         if (!cap.dragonInstances.get(1).getDimension().equals("minecraft:the_nether")) {
@@ -133,6 +149,38 @@ public class DragonWhistleTests {
         moved.discard();
         targetData.dragonInventories.remove(uuid);
         targetData.setDirty();
+        helper.succeed();
+    }
+
+    @EmptyTemplate(floor = true)
+    @GameTest
+    @TestHolder
+    public static void unavailableDragonUsesSnapshotAndRejectsOldEntity(ExtendedGameTestHelper helper) {
+        var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
+        var dragon = helper.spawn(ModEntities.DRAGON_ENTITY.get(), DMRTestConstants.TEST_POS);
+        dragon.setBreed(DragonBreedsRegistry.getDefault());
+        DragonWhistleHandler.setDragon(player, dragon, 1);
+        var oldId = dragon.getUUID();
+        var persistentId = dragon.getDragonUUID();
+        var snapshot = player.getData(ModCapabilities.PLAYER_CAPABILITY)
+                .dragonNBTs
+                .get(1)
+                .copy();
+        dragon.discard();
+        player.setItemInHand(InteractionHand.MAIN_HAND, DragonWhistleItem.getWhistleItem(DyeColor.ORANGE));
+        if (!DragonWhistleHandler.callDragon(player)) helper.fail("Snapshot summon failed");
+        var replacement = DragonWhistleHandler.findDragon(player, 1);
+        if (replacement == null
+                || replacement.getUUID().equals(oldId)
+                || !replacement.getDragonUUID().equals(persistentId)) {
+            helper.fail("Snapshot summon did not retain persistent identity with a new entity ID");
+        }
+        var oldEntity = ModEntities.DRAGON_ENTITY.get().create(helper.getLevel());
+        oldEntity.load(snapshot);
+        var join = new EntityJoinLevelEvent(oldEntity, helper.getLevel());
+        DragonWhistleEvent.onEntityJoinWorld(join);
+        if (!join.isCanceled()) helper.fail("Obsolete entity was accepted after snapshot reconstruction");
+        if (DragonWhistleHandler.findDragon(player, -1) != null) helper.fail("Invalid binding resolved a dragon");
         helper.succeed();
     }
 
@@ -541,7 +589,7 @@ public class DragonWhistleTests {
      *
      * @param helper The game test helper
      */
-	//TODO Fix this test
+    // TODO Fix this test
     // @EmptyTemplate(floor = true)
     // @GameTest
     // @TestHolder
@@ -680,7 +728,7 @@ public class DragonWhistleTests {
      * @param helper The game test helper
      */
     @EmptyTemplate(floor = true)
-    @GameTest
+    @GameTest(timeoutTicks = 400)
     @TestHolder
     public static void callAcrossDimensions(ExtendedGameTestHelper helper) {
         var player = helper.makeTickingMockServerPlayerInLevel(GameType.DEFAULT_MODE);
@@ -709,8 +757,12 @@ public class DragonWhistleTests {
         }
 
         var netherDim = helper.getLevel().getServer().getLevel(Level.NETHER);
+        netherDim.setChunkForced(0, 0, true);
+        netherDim.getChunk(0, 0);
+        dragon.setNoGravity(true);
+        dragon.setNoAi(true);
         var dimensionTransition = new DimensionTransition(
-                netherDim, new Vec3(0, 0, 0), new Vec3(0, 0, 0), 0, 0, true, DimensionTransition.DO_NOTHING);
+                netherDim, new Vec3(8, 100, 8), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING);
 
         var netherDragon = (TameableDragonEntity) dragon.changeDimension(dimensionTransition);
 
@@ -718,26 +770,58 @@ public class DragonWhistleTests {
         netherDragon.equipChest(new ItemStack(Blocks.CHEST), SoundSource.MASTER);
         netherDragon.getInventory().setItem(0, new ItemStack(ModItems.DRAGON_ARMOR.get(), 1));
 
-        // Call the dragon from the other dimension
-        boolean callResult = DragonWhistleHandler.callDragon(player);
+        var entityId = netherDragon.getUUID();
+        var dragonId = netherDragon.getDragonUUID();
+        helper.startSequence()
+                .thenWaitUntil(() -> {
+                    if (!(netherDim.getEntity(entityId) instanceof TameableDragonEntity)) {
+                        helper.fail("Waiting for the destination chunk to expose the transferred dragon");
+                    }
+                })
+                .thenExecute(() -> {
+                    try {
+                        // Simulate stale dimension metadata left by an external teleport.
+                        cap.setDragonInstance(0, new DragonInstance(player.level(), entityId, dragonId));
 
-        // Verify the call was successful
-        if (!callResult) {
-            helper.fail("Failed to call dragon from another dimension");
-        }
+                        // Call the dragon from the other dimension
+                        boolean callResult = DragonWhistleHandler.callDragon(player);
 
-        var checkDragon = DragonWhistleHandler.findDragon(player, 0);
+                        // Verify the call was successful
+                        if (!callResult) {
+                            helper.fail("Failed to call dragon from another dimension");
+                        }
 
-        if (checkDragon == null) {
-            helper.fail("Dragon was not found after being called from another dimension");
-        }
+                        var checkDragon = DragonWhistleHandler.findDragon(player, 0);
 
-        // Verify the dragon's inventory was transferred
-        if (!checkDragon.hasChest() || checkDragon.getInventory().getItem(0).isEmpty()) {
-            helper.fail("Dragon's inventory was not transferred correctly between dimensions");
-        }
+                        if (checkDragon == null) {
+                            helper.fail("Dragon was not found after being called from another dimension");
+                        }
 
-        helper.succeed();
+                        if (!checkDragon.getUUID().equals(entityId)
+                                || !checkDragon.getDragonUUID().equals(dragonId)) {
+                            helper.fail("Calling a loaded dragon reconstructed it instead of transferring it");
+                        }
+                        if (netherDim.getEntity(entityId) != null) {
+                            helper.fail("Original dragon remained loaded after cross-dimension call");
+                        }
+                        if (checkDragon.level() != player.level())
+                            helper.fail("Called dragon stayed in the old dimension");
+                        if (!DragonWhistleHandler.callDragon(player)
+                                || DragonWhistleHandler.findDragon(player, 0) != checkDragon) {
+                            helper.fail("Repeated call replaced the transferred dragon");
+                        }
+
+                        // Verify the dragon's inventory was transferred
+                        if (!checkDragon.hasChest()
+                                || checkDragon.getInventory().getItem(0).isEmpty()) {
+                            helper.fail("Dragon's inventory was not transferred correctly between dimensions");
+                        }
+
+                        helper.succeed();
+                    } finally {
+                        netherDim.setChunkForced(0, 0, false);
+                    }
+                });
     }
 
     /**

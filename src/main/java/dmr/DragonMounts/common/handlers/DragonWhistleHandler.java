@@ -30,11 +30,12 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.AABB;
+import net.minecraft.world.level.portal.DimensionTransition;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHooks;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -279,32 +280,22 @@ public class DragonWhistleHandler {
             DragonInstance instance = cap.dragonInstances.get(summonItemIndex);
             TameableDragonEntity dragon = findDragon(player, summonItemIndex);
 
-            if (instance != null) {
-                var key = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(instance.getDimension()));
-
-                if (key != player.level.dimension()) {
-                    var server = player.level.getServer();
-                    assert server != null;
-                    var level = server.getLevel(key);
-
-                    var worldData1 = DragonWorldDataManager.getInstance(level);
-                    var worldData2 = DragonWorldDataManager.getInstance(player.level);
-
-                    // Transfer the dragon inventory
-                    worldData2.dragonInventories.put(
-                            instance.getUUID(), worldData1.dragonInventories.get(instance.getUUID()));
-                    worldData1.dragonInventories.remove(instance.getUUID());
-
-                    DMR.LOGGER.debug(
-                            "Transferring dragon inventory from {} to {}",
-                            instance.getDimension(),
-                            player.level.dimension().location());
-                }
-            }
-
             if (dragon != null) {
-                dragon.setHealth(Math.max(ModConstants.DragonConstants.MIN_DRAGON_HEALTH, dragon.getHealth()));
                 dragon.ejectPassengers();
+                if (dragon.level() != player.level()) {
+                    var moved = dragon.changeDimension(new DimensionTransition(
+                            (ServerLevel) player.level(),
+                            player.position(),
+                            Vec3.ZERO,
+                            dragon.getYRot(),
+                            dragon.getXRot(),
+                            DimensionTransition.DO_NOTHING));
+                    if (!(moved instanceof TameableDragonEntity movedDragon) || movedDragon.isRemoved()) return false;
+                    dragon = movedDragon;
+                }
+                cap.setPlayerInstance(player);
+                cap.setDragonToWhistle(dragon, summonItemIndex);
+                dragon.setHealth(Math.max(ModConstants.DragonConstants.MIN_DRAGON_HEALTH, dragon.getHealth()));
 
                 if (dragon.position().distanceTo(player.position())
                         <= DragonConstants.BASE_FOLLOW_RANGE * ModConstants.DragonConstants.FOLLOW_RANGE_MULTIPLIER) {
@@ -338,7 +329,19 @@ public class DragonWhistleHandler {
                             dragon,
                             new DragonStatePacket(dragon.getId(), ModConstants.DragonConstants.DRAGON_STATE_FOLLOW));
                 }
+                ModCapabilities.syncCapability(player);
                 return true;
+            }
+
+            // Only reconstruct from the saved snapshot when no authoritative entity is loaded.
+            if (instance != null) {
+                var dimension = ResourceLocation.tryParse(instance.getDimension());
+                if (dimension != null) {
+                    var source = player.getServer().getLevel(ResourceKey.create(Registries.DIMENSION, dimension));
+                    if (source != null) {
+                        DragonWorldDataManager.transferDragonInventory(source, player.level(), instance.getUUID());
+                    }
+                }
             }
 
             // Spawning a new dragon
@@ -354,7 +357,8 @@ public class DragonWhistleHandler {
                     player.getName().getString());
 
             newDragon.setPos(player.getX(), player.getY(), player.getZ());
-            player.level.addFreshEntity(newDragon);
+            if (!player.level.addFreshEntity(newDragon)) return false;
+            ModCapabilities.syncCapability(player);
 
             PacketDistributor.sendToPlayersTrackingEntity(
                     newDragon,
@@ -367,63 +371,34 @@ public class DragonWhistleHandler {
     }
 
     public static TameableDragonEntity findDragon(Player player, int index) {
-        if (player.level.isClientSide) {
-            return null;
-        }
-
+        if (player.level.isClientSide) return null;
         var cap = player.getData(ModCapabilities.PLAYER_CAPABILITY);
         var instance = cap.dragonInstances.get(index);
+        if (instance == null) return null;
+        var server = player.getServer();
+        if (server == null) return null;
+        var entityId = cap.lastSummons.getOrDefault(index, instance.getEntityId());
 
-        if (instance != null) {
-            var dim = instance.getDimension();
-            var server = player.level.getServer();
-            assert server != null;
-
-            var key = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(dim));
-
-            // Check if the dimension is the same as the players
-            if (key == player.level.dimension()) {
-                var level = server.getLevel(key);
-
-                if (level != null) {
-                    var entity = level.getEntity(instance.getEntityId());
-                    if (entity instanceof TameableDragonEntity dragon) {
-                        DMR.LOGGER.debug("Found dragon: {} from entity id: {}", dragon, instance.getEntityId());
-                        return dragon;
-                    }
-                }
-            }
-
-            DMR.LOGGER.debug(
-                    "Searching for dragon: {} near player: {}",
-                    instance.getUUID(),
-                    player.getName().getString());
-
-            var entities = player.level.getNearbyEntities(
-                    TameableDragonEntity.class,
-                    TargetingConditions.forNonCombat(),
-                    player,
-                    AABB.ofSize(
-                            player.position(),
-                            ModConstants.DragonConstants.DRAGON_SEARCH_RADIUS,
-                            ModConstants.DragonConstants.DRAGON_SEARCH_RADIUS,
-                            ModConstants.DragonConstants.DRAGON_SEARCH_RADIUS));
-
-            for (var entity : entities) {
-                if (entity.getDragonUUID() != null && entity.getDragonUUID().equals(instance.getUUID())) {
-                    DMR.LOGGER.debug(
-                            "Found dragon: {} near player: {}",
-                            entity,
-                            player.getName().getString());
-                    return entity;
+        // Dimension metadata can be stale after portals or external teleports.
+        // Search loaded worlds by entity UUID before considering snapshot reconstruction.
+        for (var level : server.getAllLevels()) {
+            var entity = level.getEntity(entityId);
+            if (entity instanceof TameableDragonEntity dragon
+                    && !dragon.isRemoved()
+                    && instance.getUUID().equals(dragon.getDragonUUID())
+                    && player.getUUID().equals(dragon.getOwnerUUID())) return dragon;
+        }
+        // Legacy bindings may only have the persistent dragon identity.
+        if (!cap.lastSummons.containsKey(index)) {
+            for (var level : server.getAllLevels()) {
+                for (var entity : level.getAllEntities()) {
+                    if (entity instanceof TameableDragonEntity dragon
+                            && !dragon.isRemoved()
+                            && instance.getUUID().equals(dragon.getDragonUUID())
+                            && player.getUUID().equals(dragon.getOwnerUUID())) return dragon;
                 }
             }
         }
-
-        DMR.LOGGER.debug(
-                "Could not find dragon: {} for player: {}",
-                instance.getUUID(),
-                player.getName().getString());
         return null;
     }
 }
