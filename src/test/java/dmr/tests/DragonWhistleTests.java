@@ -18,12 +18,17 @@ import dmr.DragonMounts.util.PlayerStateUtils;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestInfo;
+import net.minecraft.gametest.framework.GameTestListener;
+import net.minecraft.gametest.framework.GameTestRunner;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -826,70 +831,87 @@ public class DragonWhistleTests {
         }
 
         var netherDim = helper.getLevel().getServer().getLevel(Level.NETHER);
+        var chunkPos = new ChunkPos(0, 0);
+        var destination = new BlockPos(8, 100, 8);
+        boolean wasForced = netherDim.getForcedChunks().contains(chunkPos.toLong());
         netherDim.setChunkForced(0, 0, true);
-        netherDim.getChunk(0, 0);
+        helper.testInfo.addListener(new GameTestListener() {
+            private void cleanup() {
+                if (!wasForced) netherDim.setChunkForced(0, 0, false);
+            }
+
+            @Override
+            public void testStructureLoaded(GameTestInfo testInfo) {}
+
+            @Override
+            public void testPassed(GameTestInfo testInfo, GameTestRunner runner) {
+                cleanup();
+            }
+
+            @Override
+            public void testFailed(GameTestInfo testInfo, GameTestRunner runner) {
+                cleanup();
+            }
+
+            @Override
+            public void testAddedForRerun(GameTestInfo oldTest, GameTestInfo newTest, GameTestRunner runner) {
+                cleanup();
+            }
+        });
         dragon.setNoGravity(true);
         dragon.setNoAi(true);
-        var dimensionTransition = new DimensionTransition(
-                netherDim, new Vec3(8, 100, 8), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING);
+        var entityId = dragon.getUUID();
+        var dragonId = dragon.getDragonUUID();
 
-        var netherDragon = (TameableDragonEntity) dragon.changeDimension(dimensionTransition);
-
-        // Give the dragon a chest with items
-        netherDragon.equipChest(new ItemStack(Blocks.CHEST), SoundSource.MASTER);
-        netherDragon.getInventory().setItem(0, new ItemStack(ModItems.DRAGON_ARMOR.get(), 1));
-
-        var entityId = netherDragon.getUUID();
-        var dragonId = netherDragon.getDragonUUID();
         helper.startSequence()
+                .thenWaitUntil(() -> {
+                    if (!netherDim.areEntitiesLoaded(chunkPos.toLong())
+                            || !netherDim.isPositionEntityTicking(destination)) {
+                        helper.fail("Waiting for the destination chunk's entities to load and tick");
+                    }
+                })
+                .thenExecute(() -> {
+                    var dimensionTransition = new DimensionTransition(
+                            netherDim, new Vec3(8, 100, 8), Vec3.ZERO, 0, 0, true, DimensionTransition.DO_NOTHING);
+                    var netherDragon = (TameableDragonEntity) dragon.changeDimension(dimensionTransition);
+                    if (netherDragon == null) helper.fail("Dragon failed to transfer to the Nether");
+                    netherDragon.equipChest(new ItemStack(Blocks.CHEST), SoundSource.MASTER);
+                    netherDragon.getInventory().setItem(0, new ItemStack(ModItems.DRAGON_ARMOR.get(), 1));
+                })
                 .thenWaitUntil(() -> {
                     if (!(netherDim.getEntity(entityId) instanceof TameableDragonEntity)) {
                         helper.fail("Waiting for the destination chunk to expose the transferred dragon");
                     }
                 })
                 .thenExecute(() -> {
-                    try {
-                        // Simulate stale dimension metadata left by an external teleport.
-                        cap.setDragonInstance(0, new DragonInstance(player.level(), entityId, dragonId));
+                    // Simulate stale dimension metadata left by an external teleport.
+                    cap.setDragonInstance(0, new DragonInstance(player.level(), entityId, dragonId));
 
-                        // Call the dragon from the other dimension
-                        boolean callResult = DragonWhistleHandler.callDragon(player);
-
-                        // Verify the call was successful
-                        if (!callResult) {
-                            helper.fail("Failed to call dragon from another dimension");
-                        }
-
-                        var checkDragon = DragonWhistleHandler.findDragon(player, 0);
-
-                        if (checkDragon == null) {
-                            helper.fail("Dragon was not found after being called from another dimension");
-                        }
-
-                        if (!checkDragon.getUUID().equals(entityId)
-                                || !checkDragon.getDragonUUID().equals(dragonId)) {
-                            helper.fail("Calling a loaded dragon reconstructed it instead of transferring it");
-                        }
-                        if (netherDim.getEntity(entityId) != null) {
-                            helper.fail("Original dragon remained loaded after cross-dimension call");
-                        }
-                        if (checkDragon.level() != player.level())
-                            helper.fail("Called dragon stayed in the old dimension");
-                        if (!DragonWhistleHandler.callDragon(player)
-                                || DragonWhistleHandler.findDragon(player, 0) != checkDragon) {
-                            helper.fail("Repeated call replaced the transferred dragon");
-                        }
-
-                        // Verify the dragon's inventory was transferred
-                        if (!checkDragon.hasChest()
-                                || checkDragon.getInventory().getItem(0).isEmpty()) {
-                            helper.fail("Dragon's inventory was not transferred correctly between dimensions");
-                        }
-
-                        helper.succeed();
-                    } finally {
-                        netherDim.setChunkForced(0, 0, false);
+                    if (!DragonWhistleHandler.callDragon(player)) {
+                        helper.fail("Failed to call dragon from another dimension");
                     }
+                    var checkDragon = DragonWhistleHandler.findDragon(player, 0);
+                    if (checkDragon == null) {
+                        helper.fail("Dragon was not found after being called from another dimension");
+                    }
+                    if (!checkDragon.getUUID().equals(entityId)
+                            || !checkDragon.getDragonUUID().equals(dragonId)) {
+                        helper.fail("Calling a loaded dragon reconstructed it instead of transferring it");
+                    }
+                    if (netherDim.getEntity(entityId) != null) {
+                        helper.fail("Original dragon remained loaded after cross-dimension call");
+                    }
+                    if (checkDragon.level() != player.level()) {
+                        helper.fail("Called dragon stayed in the old dimension");
+                    }
+                    if (!DragonWhistleHandler.callDragon(player)
+                            || DragonWhistleHandler.findDragon(player, 0) != checkDragon) {
+                        helper.fail("Repeated call replaced the transferred dragon");
+                    }
+                    if (!checkDragon.hasChest() || checkDragon.getInventory().getItem(0).isEmpty()) {
+                        helper.fail("Dragon's inventory was not transferred correctly between dimensions");
+                    }
+                    helper.succeed();
                 });
     }
 
